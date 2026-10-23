@@ -17,8 +17,9 @@ import (
 )
 
 type Handler struct {
-	service  *profiles.Service
-	identity *identity.Service
+	publication *profiles.PublishingService
+	service     *profiles.Service
+	identity    *identity.Service
 }
 
 var errMediaType = errors.New("unsupported media type")
@@ -103,6 +104,12 @@ func write(w http.ResponseWriter, status int, v any) {
 func fail(w http.ResponseWriter, err error) {
 	status, code := http.StatusInternalServerError, "internal_error"
 	switch {
+	case errors.Is(err, profiles.ErrStorage):
+		status, code = 503, "photo_unavailable"
+	case errors.Is(err, profiles.ErrPhotoFormat):
+		status, code = 415, "unsupported_photo_format"
+	case errors.Is(err, profiles.ErrPhotoTooLarge):
+		status, code = 413, "photo_too_large"
 	case errors.Is(err, errBodyLarge):
 		status, code = 413, "request_too_large"
 	case errors.Is(err, errMediaType):

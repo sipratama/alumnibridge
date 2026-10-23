@@ -16,6 +16,10 @@ func TestLoad(t *testing.T) {
 		t.Fatal("expected invalid port error")
 	}
 	t.Setenv("API_PORT", "8080")
+	t.Setenv("OBJECT_STORAGE_ENDPOINT", "localhost:19000")
+	t.Setenv("OBJECT_STORAGE_ACCESS_KEY", "test")
+	t.Setenv("OBJECT_STORAGE_SECRET_KEY", "test-secret")
+	t.Setenv("OBJECT_STORAGE_BUCKET", "test-bucket")
 	cfg, err := Load()
 	if err != nil || cfg.Address() != ":8080" {
 		t.Fatalf("unexpected config: %+v, %v", cfg, err)

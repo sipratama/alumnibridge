@@ -1,0 +1,123 @@
+package profiles
+
+import (
+	"context"
+	"io"
+
+	"github.com/google/uuid"
+)
+
+// PublicProfile is the allowlist for anonymous responses. It contains no internal IDs.
+type PublicProfile struct {
+	Slug            string              `json:"slug"`
+	DisplayName     string              `json:"display_name"`
+	Headline        string              `json:"headline"`
+	VerifiedAlumni  bool                `json:"verified_alumni"`
+	Bio             *string             `json:"bio,omitempty"`
+	Location        *string             `json:"location,omitempty"`
+	CurrentCompany  *string             `json:"current_company,omitempty"`
+	CurrentJobTitle *string             `json:"current_job_title,omitempty"`
+	Experiences     *[]PublicExperience `json:"experiences,omitempty"`
+	Educations      *[]PublicEducation  `json:"educations,omitempty"`
+	Skills          *[]string           `json:"skills,omitempty"`
+	PhotoURL        *string             `json:"photo_url,omitempty"`
+}
+type PublicExperience struct {
+	Company        string  `json:"company"`
+	JobTitle       string  `json:"job_title"`
+	EmploymentType string  `json:"employment_type"`
+	Location       string  `json:"location"`
+	StartDate      string  `json:"start_date"`
+	EndDate        *string `json:"end_date,omitempty"`
+	IsCurrent      bool    `json:"is_current"`
+	Description    string  `json:"description"`
+}
+type PublicEducation struct {
+	Institution  string  `json:"institution"`
+	Degree       string  `json:"degree"`
+	FieldOfStudy string  `json:"field_of_study"`
+	StartDate    *string `json:"start_date,omitempty"`
+	EndDate      *string `json:"end_date,omitempty"`
+	Description  string  `json:"description"`
+}
+type Privacy struct {
+	Visibility          string `json:"visibility"`
+	ShowBio             bool   `json:"show_bio"`
+	ShowLocation        bool   `json:"show_location"`
+	ShowCurrentCompany  bool   `json:"show_current_company"`
+	ShowCurrentJobTitle bool   `json:"show_current_job_title"`
+	ShowExperiences     bool   `json:"show_experiences"`
+	ShowEducations      bool   `json:"show_educations"`
+	ShowSkills          bool   `json:"show_skills"`
+	ShowPhoto           bool   `json:"show_photo"`
+}
+
+// Visibility is mandatory even for a partial update of optional publication flags.
+type PrivacyPatch struct {
+	Visibility          string `json:"visibility"`
+	ShowBio             *bool  `json:"show_bio"`
+	ShowLocation        *bool  `json:"show_location"`
+	ShowCurrentCompany  *bool  `json:"show_current_company"`
+	ShowCurrentJobTitle *bool  `json:"show_current_job_title"`
+	ShowExperiences     *bool  `json:"show_experiences"`
+	ShowEducations      *bool  `json:"show_educations"`
+	ShowSkills          *bool  `json:"show_skills"`
+	ShowPhoto           *bool  `json:"show_photo"`
+}
+type Photo struct {
+	Key         string
+	ContentType string
+	Size        int64
+}
+type Publication struct {
+	Profile    PublicProfile
+	Visibility string
+	Moderation string
+	Photo      *Photo
+}
+type PublicationStore interface {
+	Public(context.Context, string) (Publication, error)
+	Privacy(context.Context, uuid.UUID) (Privacy, error)
+	UpdatePrivacy(context.Context, uuid.UUID, PrivacyPatch) (Privacy, error)
+	OwnerPhoto(context.Context, uuid.UUID) (Photo, error)
+	StagePhoto(context.Context, uuid.UUID, Photo) error
+	ActivatePhoto(context.Context, uuid.UUID, string) error
+	RemovePhoto(context.Context, uuid.UUID) error
+	CleanupPhotos(context.Context, func(context.Context, string) error) error
+}
+type PhotoStorage interface {
+	Put(context.Context, string, []byte, string) error
+	Get(context.Context, string) (io.ReadCloser, error)
+	Delete(context.Context, string) error
+}
+type PublishingService struct {
+	store      PublicationStore
+	storage    PhotoStorage
+	photoSlots chan struct{}
+}
+
+func NewPublishing(store PublicationStore, storage PhotoStorage) *PublishingService {
+	return &PublishingService{store: store, storage: storage, photoSlots: make(chan struct{}, 4)}
+}
+func (s *PublishingService) Public(ctx context.Context, slug string) (Publication, error) {
+	if !ValidSlug(slug) {
+		return Publication{}, ErrNotFound
+	}
+	p, err := s.store.Public(ctx, slug)
+	if err != nil {
+		return Publication{}, err
+	}
+	if p.Visibility != "public" || p.Moderation != "visible" {
+		return Publication{}, ErrNotFound
+	}
+	return p, nil
+}
+func (s *PublishingService) Privacy(ctx context.Context, id uuid.UUID) (Privacy, error) {
+	return s.store.Privacy(ctx, id)
+}
+func (s *PublishingService) UpdatePrivacy(ctx context.Context, id uuid.UUID, p PrivacyPatch) (Privacy, error) {
+	if p.Visibility != "public" && p.Visibility != "private" {
+		return Privacy{}, ErrInvalid
+	}
+	return s.store.UpdatePrivacy(ctx, id, p)
+}
