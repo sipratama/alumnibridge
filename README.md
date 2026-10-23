@@ -2,7 +2,7 @@
 
 AlumniBridge is an open-source professional network for university students and alumni. The first community is Mathematics Education at UHAMKA, Indonesia. The design allows additional universities and study programs later.
 
-This bootstrap contains a Go API, a React web shell, and local PostgreSQL. Authentication and business features are planned in [docs/implementation-plan.md](docs/implementation-plan.md).
+The current milestone includes a Go API, a React web app, PostgreSQL, and a dedicated local Keycloak realm for sign-in and student/alumni onboarding. Professional profiles and the public directory are future work.
 
 ## Requirements
 
@@ -13,19 +13,24 @@ This bootstrap contains a Go API, a React web shell, and local PostgreSQL. Authe
 
 ## Local development: Windows PowerShell
 
-Run these commands from the repository root. The explicit project name keeps the container, network, and volume under `alumnibridge`:
+Run these commands from the repository root. These commands start only AlumniBridge services. The Keycloak database has its own persistent volume and is separate from application data. Default credentials are development-only examples; copy `.env.example` to the ignored `.env` and change passwords for any shared workstation.
 
 ```powershell
 podman machine list
 podman compose version
-podman compose -p alumnibridge --env-file .env.example up -d postgres
+podman compose -p alumnibridge --env-file .env.example up -d postgres keycloak-db keycloak
 podman compose -p alumnibridge --env-file .env.example ps
 podman compose -p alumnibridge --env-file .env.example exec -T postgres pg_isready -U alumnibridge -d alumnibridge
+Invoke-RestMethod http://localhost:18085/realms/alumnibridge/.well-known/openid-configuration | Select-Object issuer,jwks_uri
 
 $env:API_PORT = '8080'
 $env:DATABASE_URL = 'postgres://alumnibridge:local_dev_only_change_me@127.0.0.1:5432/alumnibridge?sslmode=disable'
+$env:OIDC_ISSUER = 'http://localhost:18085/realms/alumnibridge'
+$env:OIDC_AUDIENCE = 'alumnibridge-api'
+$env:OIDC_CLIENT_ID = 'alumnibridge-web'
 Push-Location apps/api
 go mod download
+go run ./cmd/migrate up
 go run ./cmd/api
 Pop-Location
 ```
@@ -39,14 +44,18 @@ npm run dev
 Pop-Location
 ```
 
-The web app is at `http://localhost:5173`. API liveness is `http://localhost:8080/health`; readiness is `http://localhost:8080/ready`. Readiness returns HTTP 503 until PostgreSQL is reachable. `.env.example` contains a local-only example password. For your own settings, copy it to the ignored `.env`, change the password in both `POSTGRES_PASSWORD` and `DATABASE_URL`, and use `--env-file .env` in the Podman commands. The API does not read `.env` itself: set its environment variables in its process as shown above.
+The web app is at `http://localhost:5173`; Keycloak is at `http://localhost:18085`; API liveness is `http://localhost:8080/health`; readiness is `http://localhost:8080/ready`. Create an account from the web app's **Create account** button, then select Student or Alumni. Alumni memberships start as `pending`; administrator review is a later milestone. Keycloak's local admin console uses username `localadmin` and password `local_admin_only` from `.env.example`. The browser uses Authorization Code Flow with PKCE; the API validates Keycloak access tokens and never accepts a client-supplied user ID. The example client redirects only to `http://localhost:5173/`. The API does not load `.env` itself: set its environment variables in the process as shown above. If you use `.env`, update the commands and corresponding application environment values together.
 
 ## Checks
 
 ```powershell
+$env:DATABASE_URL = 'postgres://alumnibridge:local_dev_only_change_me@127.0.0.1:5432/alumnibridge?sslmode=disable'
 Push-Location apps/api
 go test ./...
 go build ./cmd/api
+$env:TEST_DATABASE_URL = $env:DATABASE_URL
+go test ./internal/identity/postgres -count=1
+Remove-Item Env:TEST_DATABASE_URL
 Pop-Location
 
 Push-Location apps/web
@@ -62,9 +71,10 @@ psql -h 127.0.0.1 -p 5432 -U alumnibridge -d alumnibridge -At -c 'SELECT 1;'
 Remove-Item Env:PGPASSWORD
 Invoke-RestMethod http://localhost:8080/health
 Invoke-RestMethod http://localhost:8080/ready
+try { Invoke-WebRequest http://localhost:8080/api/v1/auth/me } catch { [int]$_.Exception.Response.StatusCode }
 ```
 
-To stop only AlumniBridge PostgreSQL: `podman compose -p alumnibridge --env-file .env.example stop postgres`. This retains its data volume for subsequent runs.
+The final command should print `401` without a bearer token. The OpenAPI contract is at [apps/api/openapi/openapi.yaml](apps/api/openapi/openapi.yaml). To stop only AlumniBridge services: `podman compose -p alumnibridge --env-file .env.example stop postgres keycloak-db keycloak`. This retains both databases' volumes. Do not use broad Podman cleanup commands on a shared workstation.
 
 ## Project documents
 

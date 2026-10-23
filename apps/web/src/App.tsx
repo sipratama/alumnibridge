@@ -1,5 +1,7 @@
 import { ArrowRight, BriefcaseBusiness, GraduationCap, MapPin, Menu, Search, ShieldCheck, UsersRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Link } from 'react-router-dom'
+import { useAuth } from '@/app/auth'
 
 const areas = [
   { icon: BriefcaseBusiness, label: 'Career paths', detail: 'See where mathematics education can take you.' },
@@ -8,6 +10,7 @@ const areas = [
 ]
 
 function App() {
+  const { status, login, register, logout } = useAuth()
   return (
     <div className="site-shell">
       <header className="site-header">
@@ -21,7 +24,7 @@ function App() {
             <a href="#community">Community</a>
             <a href="#how-it-works">How it works</a>
           </nav>
-          <div className="header-action"><Button variant="outline" disabled>Sign in <span className="sr-only">(coming soon)</span></Button></div>
+          <div className="header-action">{status === 'authenticated' ? <><Link className="text-link" to="/account">My account</Link><Button variant="outline" onClick={() => void logout()}>Sign out</Button></> : <Button variant="outline" onClick={() => void login()} disabled={status === 'loading' || status === 'error'}>Sign in</Button>}</div>
           <a className="mobile-menu" href="#about" aria-label="Skip to about section"><Menu size={22} /></a>
         </div>
       </header>
@@ -33,9 +36,11 @@ function App() {
             <h1 id="hero-title">Your next chapter starts with <em>who you know.</em></h1>
             <p className="hero-description">A place for students and alumni to share experience, explore career paths, and stay connected to the community that shaped them.</p>
             <div className="hero-actions">
-              <Button size="lg" disabled>Explore alumni <ArrowRight size={17} /><span className="sr-only">(coming soon)</span></Button>
+              {status === 'authenticated' ? <Link className="join-link" to="/onboarding">Continue your journey <ArrowRight size={17} /></Link> : <Button size="lg" onClick={() => void register()} disabled={status === 'loading' || status === 'error'}>Join the community <ArrowRight size={17} /></Button>}
               <a className="text-link" href="#about">Get to know us <ArrowRight size={17} /></a>
             </div>
+            {status === 'loading' && <p className="auth-note" role="status">Checking your sign-in status…</p>}
+            {status === 'error' && <p className="auth-note" role="alert">Sign-in is temporarily unavailable. Please try again later.</p>}
             <div className="launch-note"><span className="launch-avatars" aria-hidden="true"><i>AB</i><i>UH</i><i>ME</i></span><span>Beginning with Mathematics Education at <strong>UHAMKA</strong></span></div>
           </div>
 

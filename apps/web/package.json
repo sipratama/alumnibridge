@@ -11,15 +11,21 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.9.2",
     "@radix-ui/react-slot": "^1.5.0",
     "@tailwindcss/vite": "^4.3.3",
+    "@tanstack/react-query": "^5.104.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "keycloak-js": "^26.2.4",
     "lucide-react": "^1.61.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
+    "react-hook-form": "^7.90.0",
+    "react-router-dom": "^7.18.4",
     "tailwind-merge": "^3.7.0",
-    "tailwindcss": "^4.3.3"
+    "tailwindcss": "^4.3.3",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^7.0.1",

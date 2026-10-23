@@ -1,0 +1,98 @@
+openapi: 3.1.0
+info:
+  title: AlumniBridge API
+  version: 0.2.0
+  description: Authenticated identity and onboarding endpoints. Academic identifiers and verification evidence are not exposed.
+servers:
+  - url: http://localhost:8080
+paths:
+  /health:
+    get:
+      summary: Process liveness
+      responses:
+        '200': {description: API process is running}
+  /ready:
+    get:
+      summary: PostgreSQL readiness
+      responses:
+        '200': {description: Required database is reachable}
+        '503': {description: Required database is unavailable}
+  /api/v1/auth/me:
+    get:
+      summary: Provision and return the authenticated user
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Current user, content: {application/json: {schema: {$ref: '#/components/schemas/User'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/v1/users/me:
+    get:
+      summary: Return the authenticated user's application account
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Current user, content: {application/json: {schema: {$ref: '#/components/schemas/User'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/v1/auth/onboarding:
+    post:
+      summary: Create an idempotent student or pending alumni membership
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/OnboardingInput'}
+      responses:
+        '200': {description: Updated current user, content: {application/json: {schema: {$ref: '#/components/schemas/User'}}}}
+        '400': {description: Invalid onboarding input or unknown study program}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {description: Existing membership has different graduation year}
+        '415': {description: Content-Type must be application/json}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Keycloak access token with alumnibridge-api audience
+  responses:
+    Unauthorized:
+      description: Missing or invalid access token
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: {type: string}
+      required: [error]
+    OnboardingInput:
+      type: object
+      additionalProperties: false
+      properties:
+        role: {type: string, enum: [student, alumni]}
+        display_name: {type: string, minLength: 2, maxLength: 100}
+        institution: {type: string, example: uhamka}
+        study_program: {type: string, example: mathematics-education}
+        graduation_year: {type: integer, minimum: 1950, description: Required for alumni; omitted for students}
+      required: [role, display_name, institution, study_program]
+    Membership:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        role: {type: string, enum: [student, alumni]}
+        status: {type: string, enum: [active, pending, verified, rejected]}
+        institution: {type: string}
+        study_program: {type: string}
+        graduation_year: {type: integer}
+      required: [id, role, status, institution, study_program]
+    User:
+      type: object
+      description: Private current-user response; never a public directory model.
+      properties:
+        id: {type: string, format: uuid}
+        email: {type: string, format: email}
+        display_name: {type: string}
+        memberships:
+          type: array
+          items: {$ref: '#/components/schemas/Membership'}
+      required: [id, memberships]

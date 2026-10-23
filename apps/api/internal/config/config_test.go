@@ -8,6 +8,9 @@ func TestLoad(t *testing.T) {
 		t.Fatal("expected missing database URL error")
 	}
 	t.Setenv("DATABASE_URL", "postgres://localhost/test")
+	t.Setenv("OIDC_ISSUER", "http://localhost:18085/realms/alumnibridge")
+	t.Setenv("OIDC_AUDIENCE", "alumnibridge-api")
+	t.Setenv("OIDC_CLIENT_ID", "alumnibridge-web")
 	t.Setenv("API_PORT", "invalid")
 	if _, err := Load(); err == nil {
 		t.Fatal("expected invalid port error")

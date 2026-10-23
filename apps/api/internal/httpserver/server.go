@@ -13,7 +13,7 @@ import (
 
 type Pinger interface{ Ping(context.Context) error }
 
-func New(db Pinger, logger *slog.Logger) http.Handler {
+func New(db Pinger, logger *slog.Logger) chi.Router {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID, middleware.Recoverer)
 	r.Use(requestLogger(logger))

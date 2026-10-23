@@ -11,8 +11,12 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/sipratama/alumnibridge/apps/api/internal/auth"
 	"github.com/sipratama/alumnibridge/apps/api/internal/config"
 	"github.com/sipratama/alumnibridge/apps/api/internal/httpserver"
+	"github.com/sipratama/alumnibridge/apps/api/internal/identity"
+	identityhttp "github.com/sipratama/alumnibridge/apps/api/internal/identity/http"
+	identitypostgres "github.com/sipratama/alumnibridge/apps/api/internal/identity/postgres"
 )
 
 func main() {
@@ -30,9 +34,17 @@ func main() {
 	}
 	defer db.Close()
 
-	server := &http.Server{Addr: cfg.Address(), Handler: httpserver.New(db, logger), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	verifier, err := auth.NewJWTVerifier(ctx, cfg.OIDCJWKSURL, cfg.OIDCIssuer, cfg.OIDCAudience, cfg.OIDCClientID)
+	if err != nil {
+		logger.Error("OIDC verifier initialization failed", "error", err)
+		os.Exit(1)
+	}
+	service := identity.NewService(identitypostgres.New(db))
+	router := httpserver.New(db, logger)
+	identityhttp.Register(router, service, verifier)
+	server := &http.Server{Addr: cfg.Address(), Handler: router, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)

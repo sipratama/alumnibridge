@@ -36,7 +36,9 @@ Start with packages only when a milestone needs them. A module can have `domain`
 
 The proposed browser flow is OIDC Authorization Code with PKCE through a Keycloak public client. The web app holds no client secret. The API validates bearer token signature, issuer, audience, expiry, and relevant roles using OIDC discovery/JWKS, then maps the stable OIDC subject to an application member. Application roles and alumni verification state remain enforceable in the API. Every public route receives an explicit public response DTO; authenticated routes resolve the actor from verified token context.
 
-This is a proposed starting point, pending confirmation of hosting topology. Prefer short-lived access tokens and memory storage in the browser; avoid persistent browser token storage. Configure exact production redirect URIs and allowed origins. [Keycloak's JavaScript adapter guide](https://www.keycloak.org/securing-apps/javascript-adapter) documents the public-client and PKCE setup.
+The local implementation uses a dedicated `alumnibridge` Keycloak realm and `alumnibridge-web` public client on port 18085. `keycloak-js` uses Authorization Code Flow with S256 PKCE and keeps tokens in memory. The API checks the RS256 signature against the realm JWKS, issuer, `alumnibridge-api` audience, expiry, `Bearer` token type, and `azp=alumnibridge-web`. The verified subject is mapped to a UUID in `users`; the email is an optional mutable attribute, never the identity key. Keycloak realm role `alumnibridge-admin` is reserved for future administrator routes; onboarding cannot assign it. Configure exact production redirect URIs, origins, and HTTPS before deployment. [Keycloak's JavaScript adapter guide](https://www.keycloak.org/securing-apps/javascript-adapter) documents the public-client and PKCE setup.
+
+Current identity tables are `users`, `institutions`, `study_programs`, and `memberships`. One user may have student and alumni memberships. Student membership is active at onboarding; alumni membership remains pending until a later review workflow. There are no academic identifiers or verification documents in this schema. `GET /api/v1/auth/me` and `GET /api/v1/users/me` provision the user idempotently; `POST /api/v1/auth/onboarding` is idempotent for matching membership details and rejects conflicting graduation years. The API's response model is private to the authenticated user. The migration runner applies versioned SQL from `infrastructure/migrations`.
 
 ## Data and search
 
@@ -56,7 +58,7 @@ This is a proposed starting point, pending confirmation of hosting topology. Pre
 ## Configuration, operations, and tests
 
 - Environment variables configure API address, database URL, OIDC issuer/audience, CORS origins, and log level. A checked-in example file documents names, never credentials. Fail startup on invalid required values.
-- Docker Compose is for reproducible local development: API, web, PostgreSQL, and Keycloak. Production deployment topology is not assumed. Health endpoints distinguish process liveness from dependency readiness.
+- Podman Compose is the verified Windows local runtime for application PostgreSQL, Keycloak PostgreSQL, and Keycloak. API and Vite run natively for development. Production deployment topology is not assumed. Health endpoints distinguish process liveness from PostgreSQL readiness.
 - Go standard `testing` covers domain/application behavior; PostgreSQL integration tests exercise SQL and migrations; HTTP contract tests cover public field allowlists and authorization. Frontend checks include typecheck, lint, build, and focused behavior tests when implemented.
 - GitHub Actions should run format/lint checks, Go tests, web checks, migration/sqlc generation checks, and secret-safe build verification. Add checks with the milestones that introduce their code.
 
@@ -97,7 +99,7 @@ alumnibridge/
     implementation-plan.md
 ```
 
-The API shell, web shell, and PostgreSQL Compose service exist. The remaining paths describe future milestones.
+The API and web shells, identity module, Keycloak realm, PostgreSQL migrations, and OpenAPI contract exist. Profile, directory, verification, and connection paths describe future milestones.
 
 ## Planned dependencies
 
@@ -117,8 +119,8 @@ Pin compatible versions and commit lockfiles when executable projects are added.
 
 1. **Public data policy:** Directory value depends on alumni visibility, while names, education, and workplaces can be sensitive. Confirm the exact public field allowlist and opt-in behavior before schema/API work.
 2. **Verification workflow:** Evidence type, storage location, malware scanning if uploads are allowed, retention, appeal process, and reviewer access are undefined. Do not build evidence uploads before these are specified.
-3. **Authentication topology:** Confirm same-origin vs separate web/API/Keycloak domains, expected audience claims, session/logout behavior, and administrator role provisioning. These drive CORS, callback URLs, and token validation.
+3. **Authentication topology:** Local development uses Vite's API proxy and separate Keycloak origin. Confirm production web/API/Keycloak domains, session/logout behavior, and administrator role provisioning before deployment. Local redirect URI and web origin are exact for port 5173.
 4. **Identity lifecycle:** Define what happens on email change, account deletion, re-registration, and a member moving from student to alumnus. Keycloak subject should be the stable link, not email.
 5. **Multi-institution rules:** Define whether one member may affiliate with several programs and whether reviewers are scoped by institution. The initial model should avoid hardcoded UHAMKA IDs or names.
 6. **Search and scale:** Directory performance, case-insensitive company/profession matching, and skill vocabulary need real examples. Start with PostgreSQL indexes and measure before adding a search service.
-7. **Operational setup:** The initial workstation lacks Docker, sqlc, and a migration CLI on `PATH`; provide pinned install or containerized execution paths in the first executable milestone.
+7. **Operational setup:** Podman Compose works on the Windows workstation. The Go migration runner needs no external migration CLI. Identity queries currently use parameterized pgx in the storage adapter; adopt sqlc generation when the query set grows and a pinned generator is available, keeping migrations and handwritten SQL authoritative.
