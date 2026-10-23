@@ -1,12 +1,13 @@
 package profileshttp
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
+	"mime"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -47,23 +48,49 @@ func owner(h *Handler, r *http.Request) (uuid.UUID, error) {
 	u, err := h.identity.Me(r.Context(), actor)
 	return u.ID, err
 }
+
+var errBodyLarge = errors.New("request body too large")
+
 func decode(r *http.Request, v any) error {
-	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || media != "application/json" {
 		return errMediaType
 	}
-	d := json.NewDecoder(io.LimitReader(r.Body, 16385))
-	d.DisallowUnknownFields()
-	if err := d.Decode(v); err != nil {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 65537))
+	if err != nil {
 		return err
 	}
-	var extra any
-	if err := d.Decode(&extra); err != io.EOF {
-		return errors.New("extra JSON")
+	if len(body) > 65536 {
+		return errBodyLarge
 	}
-	return nil
+	var fields map[string]json.RawMessage
+	if err = json.Unmarshal(body, &fields); err != nil || fields == nil {
+		return profiles.ErrInvalid
+	}
+	for key, value := range fields {
+		if key == "id" {
+			return profiles.ErrInvalid
+		}
+		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			allowed := false
+			switch v.(type) {
+			case *profiles.Experience:
+				allowed = key == "end_date"
+			case *profiles.Education:
+				allowed = key == "start_date" || key == "end_date"
+			}
+			if !allowed {
+				return profiles.ErrInvalid
+			}
+		}
+	}
+	d := json.NewDecoder(bytes.NewReader(body))
+	d.DisallowUnknownFields()
+	return d.Decode(v)
 }
+
 func mapDecodeError(err error) error {
-	if errors.Is(err, errMediaType) {
+	if errors.Is(err, errMediaType) || errors.Is(err, errBodyLarge) {
 		return err
 	}
 	return profiles.ErrInvalid
@@ -76,6 +103,8 @@ func write(w http.ResponseWriter, status int, v any) {
 func fail(w http.ResponseWriter, err error) {
 	status, code := http.StatusInternalServerError, "internal_error"
 	switch {
+	case errors.Is(err, errBodyLarge):
+		status, code = 413, "request_too_large"
 	case errors.Is(err, errMediaType):
 		status, code = http.StatusUnsupportedMediaType, "unsupported_media_type"
 	case errors.Is(err, profiles.ErrInvalid):

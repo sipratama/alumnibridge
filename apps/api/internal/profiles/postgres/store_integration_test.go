@@ -26,7 +26,7 @@ func TestProfileStorage(t *testing.T) {
 	for _, v := range []struct {
 		id            uuid.UUID
 		subject, name string
-	}{{a, "profile-a-" + a.String(), "Jane Doe"}, {b, "profile-b-" + b.String(), "Jane Doe"}} {
+	}{{a, "profile-a-" + a.String(), "Jane " + a.String()}, {b, "profile-b-" + b.String(), "Jane " + a.String()}} {
 		_, err = db.Exec(ctx, `INSERT INTO users(id,oidc_subject,display_name) VALUES($1,$2,$3)`, v.id, v.subject, v.name)
 		if err != nil {
 			t.Fatal(err)
@@ -50,15 +50,16 @@ func TestProfileStorage(t *testing.T) {
 		t.Fatal("slug collision")
 	}
 	pb.Slug = pa.Slug
-	if _, err = s.UpdateProfile(ctx, b, pb); !errors.Is(err, profiles.ErrConflict) {
+	if _, err = s.UpdateProfile(ctx, b, func(profiles.Profile) (profiles.Profile, error) { return pb, nil }); !errors.Is(err, profiles.ErrConflict) {
 		t.Fatalf("collision: %v", err)
 	}
-	pa.Slug = "jane-new"
-	if _, err = s.UpdateProfile(ctx, a, pa); err != nil {
+	oldSlug := pa.Slug
+	pa.Slug = "jane-new-" + uuid.NewString()
+	if _, err = s.UpdateProfile(ctx, a, func(profiles.Profile) (profiles.Profile, error) { return pa, nil }); err != nil {
 		t.Fatal(err)
 	}
 	var reserved uuid.UUID
-	if err = db.QueryRow(ctx, `SELECT user_id FROM profile_slug_history WHERE slug=$1`, "jane-doe").Scan(&reserved); err != nil || reserved != a {
+	if err = db.QueryRow(ctx, `SELECT user_id FROM profile_slug_history WHERE slug=$1`, oldSlug).Scan(&reserved); err != nil || reserved != a {
 		t.Fatalf("old slug lost: %v", err)
 	}
 	e, err := s.SaveExperience(ctx, a, profiles.Experience{Company: "Acme", JobTitle: "Engineer", StartDate: "2020-01-01"}, false)

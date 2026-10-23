@@ -103,15 +103,21 @@ func (s *Store) Profile(ctx context.Context, id uuid.UUID) (profiles.Profile, er
 	}
 	return p, profiles.ErrConflict
 }
-func (s *Store) UpdateProfile(ctx context.Context, id uuid.UUID, p profiles.Profile) (profiles.Profile, error) {
+func (s *Store) UpdateProfile(ctx context.Context, id uuid.UUID, change func(profiles.Profile) (profiles.Profile, error)) (profiles.Profile, error) {
+	var p profiles.Profile
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return p, err
 	}
 	defer tx.Rollback(ctx)
 	var old string
-	if err = tx.QueryRow(ctx, `SELECT slug FROM profiles WHERE user_id=$1 FOR UPDATE`, id).Scan(&old); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT p.slug,COALESCE(u.display_name,''),p.headline,p.bio,p.location,p.current_company,p.current_job_title FROM profiles p JOIN users u ON u.id=p.user_id WHERE p.user_id=$1 FOR UPDATE OF p,u`, id).Scan(&p.Slug, &p.DisplayName, &p.Headline, &p.Bio, &p.Location, &p.CurrentCompany, &p.CurrentJobTitle); err != nil {
 		return p, missing(err)
+	}
+	old = p.Slug
+	p, err = change(p)
+	if err != nil {
+		return p, err
 	}
 	if old != p.Slug {
 		var owner uuid.UUID

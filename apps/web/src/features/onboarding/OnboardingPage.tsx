@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Button } from '@/components/ui/button'
-import { useAuth } from '@/app/auth'
+import { useAuth } from '@/app/authContext'
 import { ApiError, request, type CurrentUser, type OnboardingInput } from '@/shared/api/client'
 
 const schema = z.object({
@@ -26,8 +26,9 @@ export function OnboardingPage() {
   const { user, getToken, refreshUser, logout } = useAuth()
   const navigate = useNavigate()
   const [serverError, setServerError] = useState('')
-  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<FormData>({ resolver: zodResolver(schema), defaultValues: { role: 'student', display_name: user?.display_name ?? '', graduation_year: '' } })
-  const role = watch('role')
+  const [maxYear] = useState(() => new Date().getUTCFullYear() + 1)
+  const { register, handleSubmit, control, formState: { errors, isSubmitting } } = useForm<FormData>({ resolver: zodResolver(schema), defaultValues: { role: 'student', display_name: user?.display_name ?? '', graduation_year: '' } })
+  const role = useWatch({ control, name: 'role' })
 
   async function submit(values: FormData) {
     setServerError('')
@@ -42,5 +43,5 @@ export function OnboardingPage() {
     }
   }
 
-  return <main className="onboarding-page"><div className="onboarding-card"><div className="onboarding-top"><Link className="brand" to="/"><span className="brand-mark" aria-hidden="true"><span /><span /><span /></span><span>Alumni<span className="brand-accent">Bridge</span></span></Link><button type="button" className="plain-action" onClick={() => void logout()}>Sign out</button></div><span className="section-kicker">WELCOME TO THE COMMUNITY</span><h1>Tell us where your journey began.</h1><p className="form-intro">Join the Mathematics Education community at UHAMKA. Alumni membership is reviewed before public listing.</p><form onSubmit={handleSubmit(submit)} noValidate><fieldset className="role-options"><legend>I am joining as</legend><label><input type="radio" value="student" {...register('role')} /><span><strong>Student</strong><small>Learning and exploring what comes next</small></span></label><label><input type="radio" value="alumni" {...register('role')} /><span><strong>Alumni</strong><small>Sharing experience and staying connected</small></span></label></fieldset><label className="field-label" htmlFor="display-name">Display name</label><input id="display-name" className="text-input" autoComplete="name" {...register('display_name')} aria-invalid={!!errors.display_name} /><p className="field-error" role="alert">{errors.display_name?.message}</p><div className="affiliation"><span>University</span><strong>UHAMKA</strong><span>Study program</span><strong>Mathematics Education</strong></div>{role === 'alumni' && <><label className="field-label" htmlFor="graduation-year">Graduation year</label><input id="graduation-year" className="text-input" type="number" min="1950" max={new Date().getUTCFullYear() + 1} {...register('graduation_year')} aria-invalid={!!errors.graduation_year} /><p className="field-error" role="alert">{errors.graduation_year?.message}</p></>}{serverError && <p className="form-server-error" role="alert">{serverError}</p>}<Button type="submit" size="lg" disabled={isSubmitting} className="submit-button">{isSubmitting ? 'Saving…' : 'Complete onboarding'}</Button></form></div></main>
+  return <main className="onboarding-page"><div className="onboarding-card"><div className="onboarding-top"><Link className="brand" to="/"><span className="brand-mark" aria-hidden="true"><span /><span /><span /></span><span>Alumni<span className="brand-accent">Bridge</span></span></Link><button type="button" className="plain-action" onClick={() => void logout()}>Sign out</button></div><span className="section-kicker">WELCOME TO THE COMMUNITY</span><h1>Tell us where your journey began.</h1><p className="form-intro">Join the Mathematics Education community at UHAMKA. Alumni membership is reviewed before public listing.</p><form onSubmit={handleSubmit(submit)} noValidate><fieldset className="role-options"><legend>I am joining as</legend><label><input type="radio" value="student" {...register('role')} /><span><strong>Student</strong><small>Learning and exploring what comes next</small></span></label><label><input type="radio" value="alumni" {...register('role')} /><span><strong>Alumni</strong><small>Sharing experience and staying connected</small></span></label></fieldset><label className="field-label" htmlFor="display-name">Display name</label><input id="display-name" className="text-input" autoComplete="name" {...register('display_name')} aria-invalid={!!errors.display_name} /><p className="field-error" role="alert">{errors.display_name?.message}</p><div className="affiliation"><span>University</span><strong>UHAMKA</strong><span>Study program</span><strong>Mathematics Education</strong></div>{role === 'alumni' && <><label className="field-label" htmlFor="graduation-year">Graduation year</label><input id="graduation-year" className="text-input" type="number" min="1950" max={maxYear} {...register('graduation_year')} aria-invalid={!!errors.graduation_year} /><p className="field-error" role="alert">{errors.graduation_year?.message}</p></>}{serverError && <p className="form-server-error" role="alert">{serverError}</p>}<Button type="submit" size="lg" disabled={isSubmitting} className="submit-button">{isSubmitting ? 'Saving…' : 'Complete onboarding'}</Button></form></div></main>
 }

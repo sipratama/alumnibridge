@@ -17,6 +17,7 @@ func New(db Pinger, logger *slog.Logger) chi.Router {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID, middleware.Recoverer)
 	r.Use(requestLogger(logger))
+	r.Use(middleware.Timeout(10 * time.Second))
 	r.Get("/health", func(w http.ResponseWriter, _ *http.Request) { respond(w, http.StatusOK, "ok") })
 	r.Get("/ready", func(w http.ResponseWriter, req *http.Request) {
 		ctx, cancel := context.WithTimeout(req.Context(), 2*time.Second)

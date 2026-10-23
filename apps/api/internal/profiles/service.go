@@ -65,7 +65,7 @@ type Skill struct {
 
 type Store interface {
 	Profile(context.Context, uuid.UUID) (Profile, error)
-	UpdateProfile(context.Context, uuid.UUID, Profile) (Profile, error)
+	UpdateProfile(context.Context, uuid.UUID, func(Profile) (Profile, error)) (Profile, error)
 	Counts(context.Context, uuid.UUID) ([3]int, error)
 	Experiences(context.Context, uuid.UUID) ([]Experience, error)
 	SaveExperience(context.Context, uuid.UUID, Experience, bool) (Experience, error)
@@ -83,7 +83,7 @@ type Service struct{ store Store }
 func New(store Store) *Service { return &Service{store: store} }
 func trim(s string) string     { return strings.Join(strings.Fields(s), " ") }
 func valid(s string, min, max int) bool {
-	return utf8.RuneCountInString(s) >= min && utf8.RuneCountInString(s) <= max
+	return utf8.ValidString(s) && !strings.ContainsRune(s, 0) && utf8.RuneCountInString(s) >= min && utf8.RuneCountInString(s) <= max
 }
 func NormalizeSlug(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
@@ -130,10 +130,18 @@ func Completeness(p Profile, c [3]int) int {
 	return n * 100 / 9
 }
 func (s *Service) UpdateProfile(ctx context.Context, id uuid.UUID, in ProfilePatch) (Profile, error) {
-	p, err := s.store.Profile(ctx, id)
-	if err != nil {
-		return p, err
+	if _, err := s.store.Profile(ctx, id); err != nil {
+		return Profile{}, err
 	}
+	_, err := s.store.UpdateProfile(ctx, id, func(p Profile) (Profile, error) { return ApplyProfilePatch(p, in) })
+	if err != nil {
+		return Profile{}, err
+	}
+	return s.Profile(ctx, id)
+}
+
+// ApplyProfilePatch runs against the locked current profile to avoid lost updates.
+func ApplyProfilePatch(p Profile, in ProfilePatch) (Profile, error) {
 	if in.DisplayName != nil {
 		p.DisplayName = trim(*in.DisplayName)
 	}
@@ -158,12 +166,9 @@ func (s *Service) UpdateProfile(ctx context.Context, id uuid.UUID, in ProfilePat
 	if !valid(p.DisplayName, 2, 100) || !ValidSlug(p.Slug) || !valid(p.Headline, 0, 160) || !valid(p.Bio, 0, 5000) || !valid(p.Location, 0, 120) || !valid(p.CurrentCompany, 0, 160) || !valid(p.CurrentJobTitle, 0, 160) {
 		return Profile{}, ErrInvalid
 	}
-	_, err = s.store.UpdateProfile(ctx, id, p)
-	if err != nil {
-		return Profile{}, err
-	}
-	return s.Profile(ctx, id)
+	return p, nil
 }
+
 func date(v string) (time.Time, error) { return time.Parse("2006-01-02", v) }
 func validDates(start *string, end *string, required bool, current bool) bool {
 	if required && start == nil {
@@ -207,17 +212,17 @@ func NormalizeEducation(e Education) (Education, error) {
 	return e, nil
 }
 func NormalizeSkill(name string) (string, string, error) {
+	for _, r := range name {
+		if unicode.IsControl(r) && !unicode.IsSpace(r) {
+			return "", "", ErrInvalid
+		}
+	}
 	name = trim(name)
 	if !valid(name, 1, 80) {
 		return "", "", ErrInvalid
 	}
-	normalized := strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return -1
-		}
-		return unicode.ToLower(r)
-	}, name)
-	if normalized == "" || len(normalized) > 80 {
+	normalized := strings.ToLower(name)
+	if normalized == "" || !valid(normalized, 1, 80) {
 		return "", "", ErrInvalid
 	}
 	return name, normalized, nil

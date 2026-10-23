@@ -126,3 +126,5 @@ Pin compatible versions and commit lockfiles when executable projects are added.
 5. **Multi-institution rules:** Define whether one member may affiliate with several programs and whether reviewers are scoped by institution. The initial model should avoid hardcoded UHAMKA IDs or names.
 6. **Search and scale:** Directory performance, case-insensitive company/profession matching, and skill vocabulary need real examples. Start with PostgreSQL indexes and measure before adding a search service.
 7. **Operational setup:** Podman Compose works on the Windows workstation. The Go migration runner needs no external migration CLI. Identity queries currently use parameterized pgx in the storage adapter; adopt sqlc generation when the query set grows and a pinned generator is available, keeping migrations and handwritten SQL authoritative.
+
+The Phase B review adds permanent anonymous slug tombstones after account deletion, a database FK binding current slug ownership, and profile PATCH transformations under row locks. Migration 000004 rollback refuses to lose tombstones. See [review results](reviews/milestone-3-phase-b-review.md).

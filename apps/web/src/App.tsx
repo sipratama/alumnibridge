@@ -1,7 +1,7 @@
 import { ArrowRight, BriefcaseBusiness, GraduationCap, MapPin, Menu, Search, ShieldCheck, UsersRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Link } from 'react-router-dom'
-import { useAuth } from '@/app/auth'
+import { useAuth } from '@/app/authContext'
 
 const areas = [
   { icon: BriefcaseBusiness, label: 'Career paths', detail: 'See where mathematics education can take you.' },

@@ -1,6 +1,7 @@
 package profiles
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -64,5 +65,28 @@ func TestSkillNormalization(t *testing.T) {
 	name, key, err := NormalizeSkill("  Data   Science ")
 	if err != nil || name != "Data Science" || key != "data science" {
 		t.Fatalf("%q %q %v", name, key, err)
+	}
+}
+
+func TestReviewTextAndSlugLimits(t *testing.T) {
+	if ValidSlug(strings.Repeat("a", 65)) || !ValidSlug(strings.Repeat("a", 64)) {
+		t.Fatal("slug boundary")
+	}
+	if ValidSlug(NormalizeSlug("你好")) {
+		t.Fatal("empty normalized Unicode accepted")
+	}
+	if NormalizeSlug("Jane DOE") != "jane-doe" {
+		t.Fatal("case normalization")
+	}
+	if _, _, err := NormalizeSkill(strings.Repeat("界", 80)); err != nil {
+		t.Fatal("rune limit rejected Unicode", err)
+	}
+	if _, _, err := NormalizeSkill("Go\x00lang"); err != ErrInvalid {
+		t.Fatal("control accepted")
+	}
+	p := Profile{DisplayName: "Jane", Slug: "jane-doe"}
+	bad := "bad\x00value"
+	if _, err := ApplyProfilePatch(p, ProfilePatch{Bio: &bad}); err != ErrInvalid {
+		t.Fatal("NUL accepted")
 	}
 }

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { useAuth } from '@/app/auth'
+import { useAuth } from '@/app/authContext'
 import { Button } from '@/components/ui/button'
 
 export function AccountPage() {

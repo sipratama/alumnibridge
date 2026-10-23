@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import App from './App'
 
-vi.mock('./app/auth', () => ({ useAuth: () => ({ status: 'anonymous', login: vi.fn(), register: vi.fn(), logout: vi.fn() }) }))
+vi.mock('./app/authContext', () => ({ useAuth: () => ({ status: 'anonymous', login: vi.fn(), register: vi.fn(), logout: vi.fn() }) }))
 
 describe('application shell', () => {
   it('introduces AlumniBridge and offers sign-in without showing unfinished directory access', () => {

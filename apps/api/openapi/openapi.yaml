@@ -59,7 +59,9 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ProfilePatch'}}}}
       responses:
         '200': {description: Updated profile, content: {application/json: {schema: {$ref: '#/components/schemas/Profile'}}}}
-        '400': {description: Invalid input}
+        '400': {description: Invalid input; null is rejected for non-nullable fields}
+        '413': {description: JSON body exceeds 64 KiB}
+        '415': {description: Content-Type must be application/json}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '409': {description: Slug already reserved}
   /api/v1/users/me/experiences:
@@ -75,7 +77,9 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ExperienceInput'}}}}
       responses:
         '201': {description: Created experience, content: {application/json: {schema: {$ref: '#/components/schemas/Experience'}}}}
-        '400': {description: Invalid input}
+        '400': {description: Invalid input; null is rejected for non-nullable fields}
+        '413': {description: JSON body exceeds 64 KiB}
+        '415': {description: Content-Type must be application/json}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '409': {description: Experience limit reached}
   /api/v1/users/me/experiences/{id}:
@@ -87,7 +91,9 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ExperienceInput'}}}}
       responses:
         '200': {description: Updated experience, content: {application/json: {schema: {$ref: '#/components/schemas/Experience'}}}}
-        '400': {description: Invalid input}
+        '400': {description: Invalid input; null is rejected for non-nullable fields}
+        '413': {description: JSON body exceeds 64 KiB}
+        '415': {description: Content-Type must be application/json}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {description: Experience absent or not owned}
     delete:
@@ -110,7 +116,9 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EducationInput'}}}}
       responses:
         '201': {description: Created education entry, content: {application/json: {schema: {$ref: '#/components/schemas/Education'}}}}
-        '400': {description: Invalid input}
+        '400': {description: Invalid input; null is rejected for non-nullable fields}
+        '413': {description: JSON body exceeds 64 KiB}
+        '415': {description: Content-Type must be application/json}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '409': {description: Education limit reached}
   /api/v1/users/me/educations/{id}:
@@ -122,7 +130,9 @@ paths:
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EducationInput'}}}}
       responses:
         '200': {description: Updated education entry, content: {application/json: {schema: {$ref: '#/components/schemas/Education'}}}}
-        '400': {description: Invalid input}
+        '400': {description: Invalid input; null is rejected for non-nullable fields}
+        '413': {description: JSON body exceeds 64 KiB}
+        '415': {description: Content-Type must be application/json}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {description: Education entry absent or not owned}
     delete:
@@ -213,14 +223,24 @@ components:
         employment_type: {type: string, maxLength: 80}
         location: {type: string, maxLength: 120}
         start_date: {type: string, format: date}
-        end_date: {type: string, format: date}
+        end_date: {type: [string, "null"], format: date}
         is_current: {type: boolean}
         description: {type: string, maxLength: 5000}
       required: [company, job_title, start_date]
     Experience:
-      allOf:
-        - {$ref: '#/components/schemas/ExperienceInput'}
-        - {type: object, properties: {id: {type: string, format: uuid}}, required: [id]}
+      type: object
+      additionalProperties: false
+      properties:
+        id: {type: string, format: uuid}
+        company: {type: string, minLength: 1, maxLength: 160}
+        job_title: {type: string, minLength: 1, maxLength: 160}
+        employment_type: {type: string, maxLength: 80}
+        location: {type: string, maxLength: 120}
+        start_date: {type: string, format: date}
+        end_date: {type: [string, "null"], format: date}
+        is_current: {type: boolean}
+        description: {type: string, maxLength: 5000}
+      required: [id, company, job_title, start_date]
     EducationInput:
       type: object
       additionalProperties: false
@@ -228,14 +248,22 @@ components:
         institution: {type: string, minLength: 1, maxLength: 200}
         degree: {type: string, maxLength: 160}
         field_of_study: {type: string, maxLength: 160}
-        start_date: {type: string, format: date}
-        end_date: {type: string, format: date}
+        start_date: {type: [string, "null"], format: date}
+        end_date: {type: [string, "null"], format: date}
         description: {type: string, maxLength: 5000}
       required: [institution]
     Education:
-      allOf:
-        - {$ref: '#/components/schemas/EducationInput'}
-        - {type: object, properties: {id: {type: string, format: uuid}}, required: [id]}
+      type: object
+      additionalProperties: false
+      properties:
+        id: {type: string, format: uuid}
+        institution: {type: string, minLength: 1, maxLength: 200}
+        degree: {type: string, maxLength: 160}
+        field_of_study: {type: string, maxLength: 160}
+        start_date: {type: [string, "null"], format: date}
+        end_date: {type: [string, "null"], format: date}
+        description: {type: string, maxLength: 5000}
+      required: [id, institution]
     Skill:
       type: object
       additionalProperties: false

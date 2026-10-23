@@ -39,6 +39,10 @@ type profileStore struct {
 func (s profileStore) Profile(_ context.Context, _ uuid.UUID) (profiles.Profile, error) {
 	return profiles.Profile{DisplayName: "Jane Doe", Slug: "jane-doe"}, nil
 }
+func (s profileStore) UpdateProfile(ctx context.Context, id uuid.UUID, change func(profiles.Profile) (profiles.Profile, error)) (profiles.Profile, error) {
+	p, _ := s.Profile(ctx, id)
+	return change(p)
+}
 func (s profileStore) Counts(_ context.Context, _ uuid.UUID) ([3]int, error) { return [3]int{}, nil }
 func (s profileStore) DeleteExperience(_ context.Context, _, _ uuid.UUID) error {
 	return profiles.ErrNotFound
@@ -56,6 +60,9 @@ func TestOwnerRoutes(t *testing.T) {
 		{"GET", "/api/v1/users/me/profile", "", "", 401},
 		{"GET", "/api/v1/users/me/profile", "", "Bearer valid", 200},
 		{"PATCH", "/api/v1/users/me/profile", `{"slug":"admin"}`, "Bearer valid", 400},
+		{"PATCH", "/api/v1/users/me/profile", `{"headline":null}`, "Bearer valid", 400},
+		{"PATCH", "/api/v1/users/me/profile", `null`, "Bearer valid", 400},
+		{"PATCH", "/api/v1/users/me/profile", `{"headline":"` + strings.Repeat("x", 65536) + `"}`, "Bearer valid", 413},
 		{"DELETE", "/api/v1/users/me/experiences/" + uuid.NewString(), "", "Bearer valid", 404},
 	}
 	for _, tc := range cases {
