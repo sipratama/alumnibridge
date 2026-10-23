@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sipratama/alumnibridge/apps/api/internal/auth"
 	"github.com/sipratama/alumnibridge/apps/api/internal/config"
@@ -17,6 +18,9 @@ import (
 	"github.com/sipratama/alumnibridge/apps/api/internal/identity"
 	identityhttp "github.com/sipratama/alumnibridge/apps/api/internal/identity/http"
 	identitypostgres "github.com/sipratama/alumnibridge/apps/api/internal/identity/postgres"
+	"github.com/sipratama/alumnibridge/apps/api/internal/profiles"
+	profileshttp "github.com/sipratama/alumnibridge/apps/api/internal/profiles/http"
+	profilespostgres "github.com/sipratama/alumnibridge/apps/api/internal/profiles/postgres"
 )
 
 func main() {
@@ -43,7 +47,10 @@ func main() {
 	}
 	service := identity.NewService(identitypostgres.New(db))
 	router := httpserver.New(db, logger)
-	identityhttp.Register(router, service, verifier)
+	router.Route("/api/v1", func(r chi.Router) {
+		identityhttp.RegisterRoutes(r, service, verifier)
+		profileshttp.RegisterRoutes(r, profiles.New(profilespostgres.New(db)), service, verifier)
+	})
 	server := &http.Server{Addr: cfg.Address(), Handler: router, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	go func() {
 		<-ctx.Done()
