@@ -38,6 +38,7 @@ services:
         VITE_KEYCLOAK_URL: http://localhost:${KEYCLOAK_PORT:-18085}
         VITE_KEYCLOAK_REALM: ${VITE_KEYCLOAK_REALM:-alumnibridge}
         VITE_KEYCLOAK_CLIENT_ID: ${VITE_KEYCLOAK_CLIENT_ID:-alumnibridge-web}
+        VITE_OIDC_CALLBACK_URI: ${VITE_OIDC_CALLBACK_URI:-http://localhost:5173/}
     ports:
       - "${WEB_PORT:-5173}:80"
     depends_on:
