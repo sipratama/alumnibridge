@@ -42,6 +42,8 @@ Current identity tables are `users`, `institutions`, `study_programs`, and `memb
 
 ## Data and search
 
+Milestone 3 profile schema and proposed API boundaries are recorded in [professional-profile-design.md](professional-profile-design.md). The schema is prepared in Phase A; API handlers and public projections are later phases.
+
 - PostgreSQL is the system of record. UUID primary keys and `timestamptz` UTC instants are the baseline. Each module owns its schema changes, even though all tables live in one database.
 - Handwritten, versioned SQL migrations are authoritative. `sqlc` generates query code for `pgx/v5`; generated code stays in adapters and is committed only after the generation policy is agreed. [sqlc's guide](https://docs.sqlc.dev/en/latest/howto/generate.html) supports this combination.
 - Directory queries join or project only verified and discoverable alumni, use parameterized SQL, deterministic ordering, and bounded pagination. Start with indexed PostgreSQL filtering; assess full-text/trigram search only if real query needs justify it.
