@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: AlumniBridge API
-  version: 0.3.0
-  description: Identity, onboarding, and owner-only professional profile endpoints. Public profile reads and photos are deferred.
+  version: 0.3.1
+  description: Identity, onboarding, and owner-only professional profile endpoints. Includes consent-based public profiles, owner privacy controls, and access-controlled photos. Public responses never contain internal identities or private contact data.
 servers:
   - url: http://localhost:8080
 paths:
@@ -176,6 +176,75 @@ paths:
         '204': {description: Deleted}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {description: Skill link absent or not owned}
+  /api/v1/profiles/{slug}:
+    parameters: [{name: slug, in: path, required: true, schema: {type: string, minLength: 3, maxLength: 64}}]
+    get:
+      summary: Read an opted-in public, moderator-visible profile without authentication
+      description: Private, hidden, missing and deleted-account slugs return the same 404. All responses use Cache-Control no-store.
+      responses:
+        '200': {description: Public allowlist DTO, content: {application/json: {schema: {$ref: '#/components/schemas/PublicProfile'}}}}
+        '307': {description: Historical slug of the same visible owner, headers: {Location: {schema: {type: string}, description: Current relative profile API URL}}}
+        '404': {description: Profile unavailable}
+  /api/v1/users/me/profile/privacy:
+    get:
+      summary: Read the owner's privacy settings, initializing a private profile if absent
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Owner privacy settings, content: {application/json: {schema: {$ref: '#/components/schemas/Privacy'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+    patch:
+      summary: Explicitly select public or private and optionally update field publication choices
+      description: Visibility is mandatory. Omitted flags retain their values. Null, verification and moderation fields are rejected. Publishing shares display name and headline; optional groups remain hidden unless enabled.
+      security: [{bearerAuth: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Privacy'}}}}
+      responses:
+        '200': {description: Updated privacy settings, content: {application/json: {schema: {$ref: '#/components/schemas/Privacy'}}}}
+        '400': {description: Invalid input}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '413': {description: JSON body exceeds 64 KiB}
+        '415': {description: Content-Type must be application/json}
+  /api/v1/users/me/profile/photo:
+    get:
+      summary: Read the authenticated owner's photo, including when the profile is private or hidden
+      security: [{bearerAuth: []}]
+      responses:
+        '200': {description: Image bytes; Cache-Control no-store and X-Content-Type-Options nosniff, content: {image/png: {schema: {type: string, format: binary}}, image/jpeg: {schema: {type: string, format: binary}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {description: No photo}
+        '503': {description: Photo storage unavailable}
+    post:
+      summary: Upload or replace the owner's photo using raw image bytes
+      description: Maximum 5 MiB input and normalized output; dimensions at most 4096 per side and 8 million pixels. JPEG is re-encoded, PNG and WebP become PNG; metadata is discarded. Filenames and object keys are never accepted. Replaced and abandoned objects are collected by a durable retry worker.
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          image/jpeg: {schema: {type: string, format: binary}}
+          image/png: {schema: {type: string, format: binary}}
+          image/webp: {schema: {type: string, format: binary}}
+      responses:
+        '201': {description: Photo stored, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {photo_url: {type: string, const: /api/v1/users/me/profile/photo}}, required: [photo_url]}}}}
+        '400': {description: Malformed image, MIME/content mismatch, or invalid dimensions}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '413': {description: Image exceeds 5 MiB}
+        '415': {description: Unsupported image media type}
+        '503': {description: Photo storage unavailable}
+    delete:
+      summary: Remove owner photo metadata immediately and queue object deletion
+      security: [{bearerAuth: []}]
+      responses:
+        '204': {description: Photo absent; deletion retries durably if storage is unavailable}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {description: Profile absent}
+  /api/v1/profiles/{slug}/photo:
+    parameters: [{name: slug, in: path, required: true, schema: {type: string, minLength: 3, maxLength: 64}}]
+    get:
+      summary: Read a public photo only if the current profile is public, visible and show_photo is enabled
+      description: Visibility is rechecked on every request. Historical slugs resolve through the same owner reservation; tombstones do not resolve. No object storage URL or key is exposed.
+      responses:
+        '200': {description: Image bytes; Cache-Control no-store and X-Content-Type-Options nosniff, content: {image/png: {schema: {type: string, format: binary}}, image/jpeg: {schema: {type: string, format: binary}}}}
+        '404': {description: Photo unavailable}
+        '503': {description: Photo storage unavailable}
 components:
   securitySchemes:
     bearerAuth:
@@ -190,6 +259,61 @@ components:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}
   schemas:
+    Privacy:
+      type: object
+      additionalProperties: false
+      properties:
+        visibility: {type: string, enum: [private, public], default: private}
+        show_bio: {type: boolean, default: false}
+        show_location: {type: boolean, default: false}
+        show_current_company: {type: boolean, default: false}
+        show_current_job_title: {type: boolean, default: false}
+        show_experiences: {type: boolean, default: false}
+        show_educations: {type: boolean, default: false}
+        show_skills: {type: boolean, default: false}
+        show_photo: {type: boolean, default: false}
+      required: [visibility]
+    PublicProfile:
+      type: object
+      additionalProperties: false
+      properties:
+        slug: {type: string}
+        display_name: {type: string}
+        headline: {type: string}
+        verified_alumni: {type: boolean, description: Derived only from trusted verified alumni memberships}
+        bio: {type: string}
+        location: {type: string}
+        current_company: {type: string}
+        current_job_title: {type: string}
+        experiences: {type: array, maxItems: 100, items: {$ref: '#/components/schemas/PublicExperience'}}
+        educations: {type: array, maxItems: 100, items: {$ref: '#/components/schemas/PublicEducation'}}
+        skills: {type: array, maxItems: 100, items: {type: string}}
+        photo_url: {type: string, description: Relative access-controlled API URL}
+      required: [slug, display_name, headline, verified_alumni]
+    PublicExperience:
+      type: object
+      additionalProperties: false
+      properties:
+        company: {type: string, minLength: 1, maxLength: 160}
+        job_title: {type: string, minLength: 1, maxLength: 160}
+        employment_type: {type: string, maxLength: 80}
+        location: {type: string, maxLength: 120}
+        start_date: {type: string, format: date}
+        end_date: {type: [string, "null"], format: date}
+        is_current: {type: boolean}
+        description: {type: string, maxLength: 5000}
+      required: [company, job_title, start_date]
+    PublicEducation:
+      type: object
+      additionalProperties: false
+      properties:
+        institution: {type: string, minLength: 1, maxLength: 200}
+        degree: {type: string, maxLength: 160}
+        field_of_study: {type: string, maxLength: 160}
+        start_date: {type: [string, "null"], format: date}
+        end_date: {type: [string, "null"], format: date}
+        description: {type: string, maxLength: 5000}
+      required: [institution]
     Profile:
       type: object
       additionalProperties: false

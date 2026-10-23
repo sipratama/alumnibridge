@@ -2,7 +2,7 @@
 
 AlumniBridge is an open-source professional network for university students and alumni. The first community is Mathematics Education at UHAMKA, Indonesia. The design allows additional universities and study programs later.
 
-The current milestone includes a Go API, a React web app, PostgreSQL, and a dedicated local Keycloak realm for sign-in and student/alumni onboarding. Professional profiles and the public directory are future work.
+The current milestone includes a Go API, a React web app, PostgreSQL, and a dedicated local Keycloak realm for sign-in and student/alumni onboarding. The backend also supports owner profile management, explicitly public profiles, privacy controls and controlled photo delivery. The profile UI and public directory remain future work.
 
 ## Requirements
 
@@ -30,7 +30,7 @@ Run these commands from the repository root. These commands start only AlumniBri
 ```powershell
 podman machine list
 podman compose version
-podman compose -p alumnibridge --env-file .env.example up -d postgres keycloak-db keycloak
+podman compose -p alumnibridge --env-file .env.example up -d postgres keycloak-db keycloak minio
 podman compose -p alumnibridge --env-file .env.example ps
 podman compose -p alumnibridge --env-file .env.example exec -T postgres pg_isready -U alumnibridge -d alumnibridge
 Invoke-RestMethod http://localhost:18085/realms/alumnibridge/.well-known/openid-configuration | Select-Object issuer,jwks_uri
@@ -40,6 +40,11 @@ $env:DATABASE_URL = 'postgres://alumnibridge:local_dev_only_change_me@127.0.0.1:
 $env:OIDC_ISSUER = 'http://localhost:18085/realms/alumnibridge'
 $env:OIDC_AUDIENCE = 'alumnibridge-api'
 $env:OIDC_CLIENT_ID = 'alumnibridge-web'
+$env:OBJECT_STORAGE_ENDPOINT = 'localhost:19000'
+$env:OBJECT_STORAGE_ACCESS_KEY = 'alumnibridge_dev_only'
+$env:OBJECT_STORAGE_SECRET_KEY = 'local_minio_only_change_me'
+$env:OBJECT_STORAGE_BUCKET = 'alumnibridge-profile-photos'
+$env:OBJECT_STORAGE_SECURE = 'false'
 Push-Location apps/api
 go mod download
 go run ./cmd/migrate up
@@ -86,7 +91,7 @@ Invoke-RestMethod http://localhost:8080/ready
 try { Invoke-WebRequest http://localhost:8080/api/v1/auth/me } catch { [int]$_.Exception.Response.StatusCode }
 ```
 
-The final command should print `401` without a bearer token. The OpenAPI contract is at [apps/api/openapi/openapi.yaml](apps/api/openapi/openapi.yaml). To stop only AlumniBridge services: `podman compose -p alumnibridge --env-file .env.example stop postgres keycloak-db keycloak`. This retains both databases' volumes. Do not use broad Podman cleanup commands on a shared workstation.
+The final command should print `401` without a bearer token. The OpenAPI contract is at [apps/api/openapi/openapi.yaml](apps/api/openapi/openapi.yaml). To stop only AlumniBridge services: `podman compose -p alumnibridge --env-file .env.example stop postgres keycloak-db keycloak minio`. This retains both databases' volumes. Do not use broad Podman cleanup commands on a shared workstation.
 
 ## Project documents
 
@@ -94,3 +99,13 @@ The final command should print `401` without a bearer token. The OpenAPI contrac
 - [Architecture and proposed repository layout](docs/architecture.md)
 - [Implementation plan](docs/implementation-plan.md)
 - [Contributor and agent conventions](AGENTS.md)
+
+## Local profile photo storage
+
+Compose builds a dedicated MinIO instance with the `alumnibridge_minio_data` volume. The S3 API is at `http://localhost:19000` and its local console at `http://localhost:19001`; both bind to loopback. Example credentials in `.env.example` are local placeholders. Use `.env` overrides for shared machines. API object storage configuration is mandatory; native Go processes need the `OBJECT_STORAGE_*` variables shown above.
+
+The MinIO server is built from published community release `RELEASE.2025-10-15T17-29-55Z`, pinned source commit `9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a`. Official registry images were unavailable during implementation. The first build downloads and compiles that source. This archived community release is for isolated local development; assess a maintained S3-compatible deployment before production. The application depends only on its replaceable storage port. Sources: [MinIO server](https://github.com/minio/minio), [Go SDK](https://github.com/minio/minio-go).
+
+The API creates a private `alumnibridge-profile-photos` bucket and refuses buckets with anonymous access policies. Upload raw JPEG/PNG/WebP bytes to `POST /api/v1/users/me/profile/photo` with the matching Content-Type, up to 5 MiB. The API normalizes pixels, strips metadata, and returns its own read URL. Object keys and signed object URLs are never returned. Owner reads require authentication; public reads require public visibility, visible moderation status, and `show_photo=true`. No profile UI is included yet.
+
+A cleanup worker runs every minute, deleting at most 20 obsolete objects per sweep. Failed uploads/activations remain registered and expire after 15 minutes; failed deletes retain retry intent. Removal revokes API access immediately while storage deletion may retry later. Keep database and object storage backups consistent. See [Phase C design and verification](docs/phase-c-profile-privacy.md).
