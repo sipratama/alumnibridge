@@ -99,7 +99,7 @@ alumnibridge/
     implementation-plan.md
 ```
 
-The API and web shells, identity module, Keycloak realm, PostgreSQL migrations, and OpenAPI contract exist. Profile, directory, verification, and connection paths describe future milestones.
+The API and web shells, identity module, Keycloak realm, PostgreSQL migrations, and OpenAPI contract exist. Local macOS Docker Compose builds the Go API and React web app, runs migrations as a one-shot service, and serves the web app through Nginx with an `/api/` proxy. The API fetches JWKS from Keycloak on the Compose network while validating the browser-visible localhost issuer. Profile, directory, verification, and connection paths describe future milestones.
 
 ## Planned dependencies
 
