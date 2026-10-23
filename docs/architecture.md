@@ -97,7 +97,7 @@ alumnibridge/
     implementation-plan.md
 ```
 
-Only directories and documents exist now; the remaining paths describe future milestones.
+The API shell, web shell, and PostgreSQL Compose service exist. The remaining paths describe future milestones.
 
 ## Planned dependencies
 

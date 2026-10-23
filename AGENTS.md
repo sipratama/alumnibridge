@@ -35,4 +35,4 @@ These rules apply to contributors and coding agents throughout this repository. 
 
 - Check the repository state before edits and keep changes within the task scope. Do not overwrite unrelated work.
 - Explain significant design decisions and unresolved risks in the relevant document. Ask for confirmation when a product or security decision cannot be inferred safely; continue independent work while waiting.
-- For this initial task, create only documentation and foundational directories. Business code, schemas, auth setup, and frontend features start in later milestones.
+- Keep bootstrap changes free of authentication and business features until their planned milestones.
