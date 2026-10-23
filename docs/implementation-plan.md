@@ -18,6 +18,6 @@ Each milestone should leave a runnable, reviewable slice. Write small changes, a
 
 ## Current and next task
 
-Milestones 1 and 2, plus authentication verification/hardening, are complete. Milestone 3 is Professional Profile. Its Phase A covers GitHub project setup, branch creation, domain/API design and database schema only; Phases B–D require separate approval. Runtime/CI and sqlc generation policy remain follow-up work outside this milestone.
+Milestones 1 and 2, plus authentication verification/hardening, are complete. Milestone 3 is Professional Profile. Phase A covered GitHub project setup, branch creation, domain/API design and database schema. Phase B implements owner-only profile, experience, education, and skills. Phases C and D require separate approval. Runtime/CI and sqlc generation policy remain follow-up work outside this milestone.
 
 Before public profile reads, resolve the public field policy in [professional-profile-design.md](professional-profile-design.md). Alumni proof/retention and OIDC deployment topology remain open before their respective release work.

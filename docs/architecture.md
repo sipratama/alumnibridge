@@ -42,7 +42,7 @@ Current identity tables are `users`, `institutions`, `study_programs`, and `memb
 
 ## Data and search
 
-Milestone 3 profile schema and proposed API boundaries are recorded in [professional-profile-design.md](professional-profile-design.md). The schema is prepared in Phase A; API handlers and public projections are later phases.
+Milestone 3 profile schema and API boundaries are recorded in [professional-profile-design.md](professional-profile-design.md). Phase B adds owner-only profile, experience, education, and skill operations with domain validation, an inward-facing store interface, pgx adapter, and HTTP adapter. Public projections and photo storage remain later phases.
 
 - PostgreSQL is the system of record. UUID primary keys and `timestamptz` UTC instants are the baseline. Each module owns its schema changes, even though all tables live in one database.
 - Handwritten, versioned SQL migrations are authoritative. `sqlc` generates query code for `pgx/v5`; generated code stays in adapters and is committed only after the generation policy is agreed. [sqlc's guide](https://docs.sqlc.dev/en/latest/howto/generate.html) supports this combination.

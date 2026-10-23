@@ -1,6 +1,6 @@
 # Milestone 3 professional profile design (Phase A)
 
-This is a design for future API work, not a list of implemented routes. The API remains a modular monolith. The `profiles` module will own profile, experience, education, skill, slug and photo metadata rules. HTTP and pgx adapters will depend on its domain/application code, not the reverse. The verified identity user UUID is the owner key; no client-supplied owner ID is accepted.
+Phase B implements owner-only profile, experience, education, and skills routes. Public profile, visibility controls, and photos remain future work. The API remains a modular monolith. The `profiles` module will own profile, experience, education, skill, slug and photo metadata rules. HTTP and pgx adapters will depend on its domain/application code, not the reverse. The verified identity user UUID is the owner key; no client-supplied owner ID is accepted.
 
 ## Data model
 
@@ -10,13 +10,13 @@ Profile rows are created lazily when a member first edits or reads their own pro
 
 Slugs use lowercase ASCII letters, digits and internal hyphens, 3–64 characters. Normalize a candidate from the display name, fall back to `member-<short random suffix>` if empty, and allocate collisions with a random suffix under a transaction. Reserve `api`, `admin`, `auth`, `in`, `me`, `settings`, `dashboard`, `login`, `logout`, `register`, `onboarding`, `profile`, `profiles`, and offensive terms maintained in an application denylist. Slug history reserves each issued slug for its original owner for the lifetime of that account. A changed slug may redirect to the current slug only when that profile is public; private profiles return 404 for both old and current slugs. The service must insert the reservation and update the current slug in one transaction. `profiles.slug` and `profile_slug_history.slug` each have unique constraints; the application transaction must also check the other table. Do not expose the user UUID in slug URLs. Account deletion and post-deletion slug reuse need a separate policy decision.
 
-Completeness is a server-computed integer percentage based on display name, headline, bio, location, current role/company, at least one experience, at least one education, at least one skill, and a photo. It is private metadata and does not determine public eligibility. Fix the exact weighting in domain tests before implementation.
+Completeness is a server-computed integer percentage based on nine equally weighted signals: display name, headline, bio, location, current company, current job title, at least one experience, at least one education, and at least one skill. It is private metadata and does not determine public eligibility. Photo is excluded until Phase C delivers uploads.
 
 Experience dates are calendar dates, with an optional end date; current positions require no end date. Education dates are optional but ordered if both exist. Both collections are bounded and ordered by start date descending, then UUID. Skill normalization trims and collapses spaces and case-folds before lookup; the database unique `normalized_name` prevents duplicate vocabulary entries, and `(user_id, skill_id)` prevents duplicate assignments.
 
 ## Proposed API contract
 
-All paths are below `/api/v1`. The OpenAPI file will be updated when each route is implemented. Owner routes require the verified Keycloak bearer token; public reads do not.
+All paths are below `/api/v1`. OpenAPI contains the implemented Phase B routes. Owner routes require the verified Keycloak bearer token; skill search is public. Experience and education PATCH replace their editable fields, while profile PATCH updates only supplied fields. Owner lists are capped at 100; skill search is capped at 50.
 
 | Method and path | Purpose | Response |
 | --- | --- | --- |
@@ -30,7 +30,7 @@ All paths are below `/api/v1`. The OpenAPI file will be updated when each route 
 | `POST /users/me/educations` | Add education | 201 with owner DTO |
 | `PATCH /users/me/educations/{id}` | Edit owned education | Owner DTO |
 | `DELETE /users/me/educations/{id}` | Delete owned education | 204 |
-| `GET /skills?q=&limit=&cursor=` | Search existing skills | Bounded page |
+| `GET /skills?query=&limit=` | Search existing skills | Bounded prefix results |
 | `GET /users/me/skills` | Owner skills | Bounded list |
 | `POST /users/me/skills` | Add or reuse a normalized skill | Owner DTO |
 | `DELETE /users/me/skills/{id}` | Remove owned skill link | 204 |
@@ -39,6 +39,8 @@ All paths are below `/api/v1`. The OpenAPI file will be updated when each route 
 | `GET /profiles/{slug}` | Read an opted-in public profile | Public allowlist DTO or non-disclosing 404 |
 
 Use 400 for malformed input, 401 for missing/invalid token, 404 for absent or non-owned resources, 409 for slug conflicts, 413 for oversized uploads, and 415 for unsupported media. Owner collection responses must have hard limits. Public photos require an access-controlled delivery path designed in Phase C; no direct private object key appears in public DTOs.
+
+Migration `000003_profile_details` adds employment type and location to experience and description to education. `000002_profiles` was left unchanged because it may already be applied in persistent environments. The PostgreSQL adapter uses an owner-scoped WHERE clause for every item mutation and a transaction for profile/slug updates and skill vocabulary/link creation. Slug reservations use a unique key and retry a random suffix during initialization; explicit conflicting slug updates return 409. Slug history remains internal until Phase C defines public redirects.
 
 ## Open decisions before Phase C
 

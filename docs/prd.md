@@ -22,6 +22,8 @@ An identity may be both a student and an alumnus over time. An alumni claim is n
 2. **Professional profile:** An authenticated member can manage a display name, headline, current profession and company, work experience, education, and skills. Education and graduation year are subject to a field-level publication decision.
 
 Milestone 3 also plans a bio, location, photo, shareable slug, private-by-default profile visibility, and server-computed completeness. Public profile eligibility and publication of optional academic details require product decisions before public read routes are enabled.
+
+Milestone 3 Phase B provides authenticated owner-only profile, experience, education, and skills operations. Profiles remain private; public profile reads, visibility controls, and photo uploads are Phase C work. Students and pending alumni may later opt into public profiles, but pending alumni must never be represented as verified alumni.
 3. **Public alumni directory:** Visitors can view discoverable, verified alumni through paginated results and public profile pages. Search supports profession, company, graduation year, and skills. Unverified claims never enter public results.
 4. **Membership review:** Authorized administrators can inspect restricted verification information, approve or reject a claim, and see who made the decision and when. Claimants can see their own review status.
 5. **Connections:** Signed-in members can send, accept, decline, or withdraw connection requests and see their own connection state. Duplicate and self-requests are rejected.
