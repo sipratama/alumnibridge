@@ -16,7 +16,7 @@ Experience dates are calendar dates, with an optional end date; current position
 
 ## Proposed API contract
 
-All paths are below `/api/v1`. OpenAPI contains the implemented Phase B routes. Owner routes require the verified Keycloak bearer token; skill search is public. Experience and education PATCH replace their editable fields, while profile PATCH updates only supplied fields. Owner lists are capped at 100; skill search is capped at 50.
+All paths are below `/api/v1`. OpenAPI contains the implemented Phase B routes. Owner routes require the verified Keycloak bearer token; skill search is public. Experience and education PATCH replace their editable fields, while profile PATCH updates only supplied fields. Owner collections are capped at 100 entries with a conflict response at the limit; skill search is capped at 50.
 
 | Method and path | Purpose | Response |
 | --- | --- | --- |

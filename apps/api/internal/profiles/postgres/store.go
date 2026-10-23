@@ -28,6 +28,24 @@ func missing(err error) error {
 	}
 	return err
 }
+
+func collectionSlot(ctx context.Context, tx pgx.Tx, id uuid.UUID, table string) error {
+	if table != "profile_experiences" && table != "profile_educations" && table != "profile_skills" {
+		return profiles.ErrInvalid
+	}
+	var locked uuid.UUID
+	if err := tx.QueryRow(ctx, `SELECT id FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&locked); err != nil {
+		return missing(err)
+	}
+	var count int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM `+table+` WHERE user_id=$1`, id).Scan(&count); err != nil {
+		return err
+	}
+	if count >= 100 {
+		return profiles.ErrConflict
+	}
+	return nil
+}
 func (s *Store) Profile(ctx context.Context, id uuid.UUID) (profiles.Profile, error) {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
@@ -141,7 +159,19 @@ func (s *Store) SaveExperience(ctx context.Context, id uuid.UUID, e profiles.Exp
 	if update {
 		err = s.db.QueryRow(ctx, `UPDATE profile_experiences SET company=$3,title=$4,employment_type=$5,location=$6,start_date=$7,end_date=$8,is_current=$9,description=$10,updated_at=now() WHERE id=$1 AND user_id=$2 RETURNING id`, e.ID, id, e.Company, e.JobTitle, e.EmploymentType, e.Location, e.StartDate, e.EndDate, e.IsCurrent, e.Description).Scan(&e.ID)
 	} else {
-		err = s.db.QueryRow(ctx, `INSERT INTO profile_experiences(user_id,company,title,employment_type,location,start_date,end_date,is_current,description) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`, id, e.Company, e.JobTitle, e.EmploymentType, e.Location, e.StartDate, e.EndDate, e.IsCurrent, e.Description).Scan(&e.ID)
+		tx, beginErr := s.db.Begin(ctx)
+		if beginErr != nil {
+			return e, beginErr
+		}
+		defer tx.Rollback(ctx)
+		if err = collectionSlot(ctx, tx, id, "profile_experiences"); err != nil {
+			return e, err
+		}
+		err = tx.QueryRow(ctx, `INSERT INTO profile_experiences(user_id,company,title,employment_type,location,start_date,end_date,is_current,description) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`, id, e.Company, e.JobTitle, e.EmploymentType, e.Location, e.StartDate, e.EndDate, e.IsCurrent, e.Description).Scan(&e.ID)
+		if err != nil {
+			return e, dbError(err)
+		}
+		return e, tx.Commit(ctx)
 	}
 	return e, missing(dbError(err))
 }
@@ -176,7 +206,19 @@ func (s *Store) SaveEducation(ctx context.Context, id uuid.UUID, e profiles.Educ
 	if update {
 		err = s.db.QueryRow(ctx, `UPDATE profile_educations SET institution_name=$3,degree=$4,field_of_study=$5,start_date=$6,end_date=$7,description=$8,updated_at=now() WHERE id=$1 AND user_id=$2 RETURNING id`, e.ID, id, e.Institution, e.Degree, e.FieldOfStudy, e.StartDate, e.EndDate, e.Description).Scan(&e.ID)
 	} else {
-		err = s.db.QueryRow(ctx, `INSERT INTO profile_educations(user_id,institution_name,degree,field_of_study,start_date,end_date,description) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`, id, e.Institution, e.Degree, e.FieldOfStudy, e.StartDate, e.EndDate, e.Description).Scan(&e.ID)
+		tx, beginErr := s.db.Begin(ctx)
+		if beginErr != nil {
+			return e, beginErr
+		}
+		defer tx.Rollback(ctx)
+		if err = collectionSlot(ctx, tx, id, "profile_educations"); err != nil {
+			return e, err
+		}
+		err = tx.QueryRow(ctx, `INSERT INTO profile_educations(user_id,institution_name,degree,field_of_study,start_date,end_date,description) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`, id, e.Institution, e.Degree, e.FieldOfStudy, e.StartDate, e.EndDate, e.Description).Scan(&e.ID)
+		if err != nil {
+			return e, dbError(err)
+		}
+		return e, tx.Commit(ctx)
 	}
 	return e, missing(dbError(err))
 }
@@ -235,6 +277,16 @@ func (s *Store) AddSkill(ctx context.Context, id uuid.UUID, name, key string) (p
 		return profiles.Skill{}, dbError(err)
 	}
 	var linkID uuid.UUID
+	err = tx.QueryRow(ctx, `SELECT id FROM profile_skills WHERE user_id=$1 AND skill_id=$2`, id, skillID).Scan(&linkID)
+	if err == nil {
+		return profiles.Skill{ID: linkID, Name: canonical}, tx.Commit(ctx)
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return profiles.Skill{}, err
+	}
+	if err = collectionSlot(ctx, tx, id, "profile_skills"); err != nil {
+		return profiles.Skill{}, err
+	}
 	err = tx.QueryRow(ctx, `INSERT INTO profile_skills(user_id,skill_id) VALUES($1,$2) ON CONFLICT(user_id,skill_id) DO UPDATE SET skill_id=EXCLUDED.skill_id RETURNING id`, id, skillID).Scan(&linkID)
 	if err != nil {
 		return profiles.Skill{}, dbError(err)

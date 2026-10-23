@@ -78,6 +78,14 @@ func TestProfileStorage(t *testing.T) {
 	if err = s.DeleteExperience(ctx, a, e.ID); err != nil {
 		t.Fatal(err)
 	}
+	_, err = db.Exec(ctx, `INSERT INTO profile_experiences(user_id,company,title,start_date) SELECT $1,'Acme','Engineer','2020-01-01'::date FROM generate_series(1,100)`, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.SaveExperience(ctx, a, profiles.Experience{Company: "Acme", JobTitle: "Engineer", StartDate: "2020-01-01"}, false)
+	if !errors.Is(err, profiles.ErrConflict) {
+		t.Fatalf("collection limit: %v", err)
+	}
 	ed, err := s.SaveEducation(ctx, a, profiles.Education{Institution: "Another University"}, false)
 	if err != nil {
 		t.Fatal(err)

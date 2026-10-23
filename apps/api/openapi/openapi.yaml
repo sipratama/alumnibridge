@@ -77,6 +77,7 @@ paths:
         '201': {description: Created experience, content: {application/json: {schema: {$ref: '#/components/schemas/Experience'}}}}
         '400': {description: Invalid input}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {description: Experience limit reached}
   /api/v1/users/me/experiences/{id}:
     parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
     patch:
@@ -111,6 +112,7 @@ paths:
         '201': {description: Created education entry, content: {application/json: {schema: {$ref: '#/components/schemas/Education'}}}}
         '400': {description: Invalid input}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {description: Education limit reached}
   /api/v1/users/me/educations/{id}:
     parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
     patch:
@@ -154,6 +156,7 @@ paths:
         '201': {description: Owner skill link, content: {application/json: {schema: {$ref: '#/components/schemas/Skill'}}}}
         '400': {description: Invalid skill name}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {description: Skill limit reached}
   /api/v1/users/me/skills/{id}:
     parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
     delete:
