@@ -42,12 +42,12 @@ Use 400 for malformed input, 401 for missing/invalid token, 404 for absent or no
 
 Migration `000003_profile_details` adds employment type and location to experience and description to education. `000002_profiles` was left unchanged because it may already be applied in persistent environments. The PostgreSQL adapter uses an owner-scoped WHERE clause for every item mutation and a transaction for profile/slug updates and skill vocabulary/link creation. Slug reservations use a unique key and retry a random suffix during initialization; explicit conflicting slug updates return 409. Slug history remains internal until Phase C defines public redirects.
 
-## Open decisions before Phase C
+## Implemented Phase C decisions and remaining release questions
 
-- Confirm whether opted-in students and pending alumni may have public profiles. This design proposes yes, but only verified alumni may appear in the later directory.
-- Confirm field defaults for public display name/headline and whether education and graduation year need separate consent. This design defaults optional fields hidden and never publishes graduation year from membership data.
-- Choose the photo storage adapter and its deletion/retention policy before upload work. Use a private local directory for development if suitable; no work-related MinIO containers.
-- Agree on the exact offensive-slug denylist and completeness weights before implementing the related domain logic.
+- Students and pending alumni may explicitly publish; only trusted verified alumni membership grants the badge. Future directory eligibility is a separate policy.
+- Public consent shares display name/headline. Optional groups start hidden; membership graduation years are never published.
+- Dedicated local MinIO and durable retry cleanup are implemented. Production storage maintenance and retention operations still need release review.
+- The existing nine-signal completeness formula is retained. Agree on the offensive-slug moderation policy before public launch.
 
 Phase B review: profile PATCH merges under a row lock; optional empty strings clear text while omitted fields retain it. Null is rejected for non-nullable fields. Experience/education PATCH retains its documented replacement semantics. Requests use a 64 KiB JSON body limit and a ten-second API context deadline. See [review evidence](reviews/milestone-3-phase-b-review.md).
 
