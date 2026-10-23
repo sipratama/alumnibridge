@@ -6,10 +6,22 @@ The current milestone includes a Go API, a React web app, PostgreSQL, and a dedi
 
 ## Requirements
 
+- macOS with Docker Desktop and Docker Compose (for the full Docker stack)
 - Go 1.27 or newer (bootstrap tested with 1.27.3)
 - Node.js 24 or newer and npm (bootstrap tested with Node 24.21.0 and npm 11.19.0)
 - Podman with a running Podman machine and a working `podman compose` provider (verified with Podman 5.8.3 and Docker Compose provider 5.1.3; Docker Desktop is not required)
 - PostgreSQL `psql` client only if you want to test the Windows host connection directly
+
+## Local development: macOS with Docker
+
+From the repository root, run:
+
+```sh
+docker compose -p alumnibridge --env-file .env.example up -d --build
+docker compose -p alumnibridge --env-file .env.example ps
+```
+
+The web app is at `http://localhost:5173`, the API at `http://localhost:8080`, and Keycloak at `http://localhost:18085`. Compose builds the Go API and React web app, runs the database migration, and starts PostgreSQL and Keycloak. The example credentials are for local development only. To stop the stack while retaining database data, run `docker compose -p alumnibridge --env-file .env.example down`. To inspect startup issues, run `docker compose -p alumnibridge --env-file .env.example logs --tail=100 api web migrate keycloak`.
 
 ## Local development: Windows PowerShell
 
@@ -44,7 +56,7 @@ npm run dev
 Pop-Location
 ```
 
-The web app is at `http://localhost:5173`; Keycloak is at `http://localhost:18085`; API liveness is `http://localhost:8080/health`; readiness is `http://localhost:8080/ready`. Create an account from the web app's **Create account** button, then select Student or Alumni. Alumni memberships start as `pending`; administrator review is a later milestone. Keycloak's local admin console uses username `localadmin` and password `local_admin_only` from `.env.example`. The browser uses Authorization Code Flow with PKCE; the API validates Keycloak access tokens and never accepts a client-supplied user ID. The example client redirects only to `http://localhost:5173/`. The API does not load `.env` itself: set its environment variables in the process as shown above. If you use `.env`, update the commands and corresponding application environment values together.
+The web app is at `http://localhost:5173`; Keycloak is at `http://localhost:18085`; API liveness is `http://localhost:8080/health`; readiness is `http://localhost:8080/ready`. Create an account from the web app's **Create account** button, then select Student or Alumni. Alumni memberships start as `pending`; administrator review is a later milestone. Keycloak's local admin console uses username `localadmin` and password `local_admin_only` from `.env.example`. The browser uses Authorization Code Flow with PKCE; the API validates Keycloak access tokens and never accepts a client-supplied user ID. The example client redirects only to `http://localhost:5173/`. Set `VITE_OIDC_CALLBACK_URI` to this exact URI, including the trailing slash. Existing Keycloak databases are not updated by realm import: in the Keycloak Admin Console, inspect **Clients → alumnibridge-web → Settings → Valid redirect URIs** and set the sole value to `http://localhost:5173/` if it differs. Keep **Web origins** at `http://localhost:5173`. The API does not load `.env` itself: set its environment variables in the process as shown above. If you use `.env`, update the commands and corresponding application environment values together.
 
 ## Checks
 

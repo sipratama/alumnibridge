@@ -1,4 +1,49 @@
 services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      API_PORT: 8080
+      DATABASE_URL: postgres://${POSTGRES_USER:-alumnibridge}:${POSTGRES_PASSWORD:-local_dev_only_change_me}@postgres:5432/${POSTGRES_DB:-alumnibridge}?sslmode=disable
+      OIDC_ISSUER: http://localhost:${KEYCLOAK_PORT:-18085}/realms/alumnibridge
+      OIDC_JWKS_URL: http://keycloak:8080/realms/alumnibridge/protocol/openid-connect/certs
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-alumnibridge-api}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-alumnibridge-web}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: ["/app/migrate", "-path", "/app/migrations", "up"]
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-alumnibridge}:${POSTGRES_PASSWORD:-local_dev_only_change_me}@postgres:5432/${POSTGRES_DB:-alumnibridge}?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+  web:
+    build:
+      context: apps/web
+      args:
+        VITE_KEYCLOAK_URL: http://localhost:${KEYCLOAK_PORT:-18085}
+        VITE_KEYCLOAK_REALM: ${VITE_KEYCLOAK_REALM:-alumnibridge}
+        VITE_KEYCLOAK_CLIENT_ID: ${VITE_KEYCLOAK_CLIENT_ID:-alumnibridge-web}
+        VITE_OIDC_CALLBACK_URI: ${VITE_OIDC_CALLBACK_URI:-http://localhost:5173/}
+    ports:
+      - "${WEB_PORT:-5173}:80"
+    depends_on:
+      - api
+    restart: unless-stopped
   postgres:
     image: postgres:17-alpine
     environment:
@@ -47,6 +92,11 @@ services:
     depends_on:
       keycloak-db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 volumes:
   postgres_data:
   keycloak_data:
