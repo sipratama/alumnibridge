@@ -110,3 +110,71 @@ func TestServicePaginationAndCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestCursorAdversarialPayloadAndRestart(t *testing.T) {
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCursor(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(1700000000, 0)
+	c.now = func() time.Time { return now }
+	spec, _ := Normalize(Spec{Limit: 2, Skills: []string{"Go", "Teaching"}})
+	token, err := c.Seal(spec, "valid-anchor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	restarted, _ := NewCursor(key)
+	restarted.now = c.now
+	if _, err := restarted.Open(token, spec); err != nil {
+		t.Fatalf("same-key restart lost cursor: %v", err)
+	}
+	otherOrder, _ := Normalize(Spec{Limit: 2, Skills: []string{"teaching", " go "}})
+	if _, err := c.Open(token, otherOrder); err != nil {
+		t.Fatalf("normalized filter order mismatch: %v", err)
+	}
+	changed, _ := Normalize(Spec{Limit: 2, Skills: []string{"Go"}})
+	if _, err := c.Open(token, changed); err != ErrInvalid {
+		t.Fatal("changed skills accepted")
+	}
+	seen := map[string]bool{token: true}
+	for i := 0; i < 16; i++ {
+		s, err := c.Seal(spec, "valid-anchor")
+		if err != nil || seen[s] {
+			t.Fatal("nonce/token reused", err)
+		}
+		seen[s] = true
+	}
+	for _, p := range []cursorPayload{
+		{Version: 2, Expires: now.Add(time.Minute).Unix(), Filters: fingerprint(spec), Slug: "valid-anchor"},
+		{Version: 1, Expires: now.Unix(), Filters: fingerprint(spec), Slug: "valid-anchor"},
+		{Version: 1, Expires: now.Add(time.Hour).Unix(), Filters: fingerprint(spec), Slug: "valid-anchor"},
+		{Version: 1, Expires: now.Add(time.Minute).Unix(), Filters: fingerprint(spec), Slug: "../private"},
+		{Version: 1, Expires: now.Add(time.Minute).Unix(), Slug: "valid-anchor"},
+	} {
+		plain, err := json.Marshal(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		nonce := make([]byte, c.aead.NonceSize())
+		if _, err = rand.Read(nonce); err != nil {
+			t.Fatal(err)
+		}
+		forged := base64.RawURLEncoding.EncodeToString(c.aead.Seal(nonce, nonce, plain, cursorPurpose))
+		if _, err = c.Open(forged, spec); err != ErrInvalid {
+			t.Fatalf("invalid authenticated payload accepted: %+v %v", p, err)
+		}
+	}
+	for size := 0; size < 128; size++ {
+		raw := make([]byte, size)
+		if _, err := rand.Read(raw); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.Open(base64.RawURLEncoding.EncodeToString(raw), spec); err != ErrInvalid {
+			t.Fatal("random token accepted")
+		}
+	}
+}

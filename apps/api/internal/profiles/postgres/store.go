@@ -110,8 +110,13 @@ func (s *Store) UpdateProfile(ctx context.Context, id uuid.UUID, change func(pro
 		return p, err
 	}
 	defer tx.Rollback(ctx)
+	// Match onboarding and account deletion: lock the parent before its profile.
+	var locked uuid.UUID
+	if err = tx.QueryRow(ctx, `SELECT id FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&locked); err != nil {
+		return p, missing(err)
+	}
 	var old string
-	if err = tx.QueryRow(ctx, `SELECT p.slug,COALESCE(u.display_name,''),p.headline,p.bio,p.location,p.current_company,p.current_job_title FROM profiles p JOIN users u ON u.id=p.user_id WHERE p.user_id=$1 FOR UPDATE OF p,u`, id).Scan(&p.Slug, &p.DisplayName, &p.Headline, &p.Bio, &p.Location, &p.CurrentCompany, &p.CurrentJobTitle); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT p.slug,COALESCE(u.display_name,''),p.headline,p.bio,p.location,p.current_company,p.current_job_title FROM profiles p JOIN users u ON u.id=p.user_id WHERE p.user_id=$1 FOR UPDATE OF p`, id).Scan(&p.Slug, &p.DisplayName, &p.Headline, &p.Bio, &p.Location, &p.CurrentCompany, &p.CurrentJobTitle); err != nil {
 		return p, missing(err)
 	}
 	old = p.Slug

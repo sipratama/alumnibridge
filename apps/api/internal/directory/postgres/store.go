@@ -26,9 +26,9 @@ const searchSQL = `WITH page AS MATERIALIZED (
  FROM profiles p JOIN users u ON u.id=p.user_id
  WHERE p.visibility='public' AND p.moderation_status='visible' AND p.directory_discoverable
  AND EXISTS(SELECT 1 FROM memberships WHERE user_id=p.user_id AND role='alumni' AND status='verified')
- AND ($1='' OR lower(regexp_replace(btrim(COALESCE(u.display_name,'')),'[[:space:]]+',' ','g')) LIKE $1 ESCAPE '\')
- AND ($2='' OR CASE WHEN p.show_current_company THEN lower(regexp_replace(btrim(p.current_company),'[[:space:]]+',' ','g')) LIKE $2 ESCAPE '\' ELSE false END)
- AND ($3='' OR CASE WHEN p.show_current_job_title THEN lower(regexp_replace(btrim(p.current_job_title),'[[:space:]]+',' ','g')) LIKE $3 ESCAPE '\' ELSE false END)
+ AND ($1='' OR btrim(regexp_replace(translate(COALESCE(u.display_name,''),$10,$11),' +',' ','g')) COLLATE "C" LIKE $1 ESCAPE '\')
+ AND ($2='' OR CASE WHEN p.show_current_company THEN btrim(regexp_replace(translate(p.current_company,$10,$11),' +',' ','g')) COLLATE "C" LIKE $2 ESCAPE '\' ELSE false END)
+ AND ($3='' OR CASE WHEN p.show_current_job_title THEN btrim(regexp_replace(translate(p.current_job_title,$10,$11),' +',' ','g')) COLLATE "C" LIKE $3 ESCAPE '\' ELSE false END)
  AND (cardinality($4::text[])=0 OR (p.show_skills AND NOT EXISTS (
     SELECT 1 FROM unnest($4::text[]) wanted(name) WHERE NOT EXISTS (
       SELECT 1 FROM profile_skills ps JOIN skills s ON s.id=ps.skill_id
@@ -68,7 +68,7 @@ func (s *Store) Search(ctx context.Context, spec directory.Spec) ([]directory.En
 		return nil, err
 	}
 	rows, err := s.db.Query(ctx, searchSQL, prefix(spec.Query), prefix(spec.Company), prefix(spec.JobTitle), spec.Skills,
-		spec.Institution, spec.StudyProgram, spec.GraduationYear, spec.After, spec.Limit+1)
+		spec.Institution, spec.StudyProgram, spec.GraduationYear, spec.After, spec.Limit+1, normalizationFrom, normalizationTo)
 	if err != nil {
 		return nil, err
 	}
