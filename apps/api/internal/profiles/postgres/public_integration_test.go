@@ -123,7 +123,7 @@ func TestPublicProfilesAndMinIO(t *testing.T) {
 		profileshttp.RegisterRoutes(r, svc, ids, verifier)
 		profileshttp.RegisterPublishingRoutes(r, svc, pub, ids, verifier)
 	})
-	call := func(method, path string, body []byte, kind, token string, want int) *httptest.ResponseRecorder {
+	call := func(method, path string, body []byte, kind, token string, want int, ifMatch ...string) *httptest.ResponseRecorder {
 		t.Helper()
 		req := httptest.NewRequest(method, "/api/v1"+path, bytes.NewReader(body))
 		req.Header.Set("Content-Type", kind)
@@ -139,6 +139,22 @@ func TestPublicProfilesAndMinIO(t *testing.T) {
 		if token != "" {
 			req.Header.Set("Authorization", "Bearer "+token)
 		}
+		if method == "PATCH" && path == "/users/me/profile/privacy" && want != 401 {
+			if len(ifMatch) != 0 {
+				if ifMatch[0] != "" {
+					req.Header.Set("If-Match", ifMatch[0])
+				}
+			} else {
+				ownerGet := httptest.NewRequest("GET", "/api/v1"+path, nil)
+				ownerGet.Header.Set("Authorization", "Bearer "+token)
+				ownerResponse := httptest.NewRecorder()
+				r.ServeHTTP(ownerResponse, ownerGet)
+				if ownerResponse.Code != 200 || ownerResponse.Header().Get("ETag") == "" {
+					t.Fatalf("owner GET %s did not supply an ETag: %d %s", path, ownerResponse.Code, ownerResponse.Body.String())
+				}
+				req.Header.Set("If-Match", ownerResponse.Header().Get("ETag"))
+			}
+		}
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
 		if w.Code != want {
@@ -153,7 +169,13 @@ func TestPublicProfilesAndMinIO(t *testing.T) {
 	for _, bad := range []string{`{"visibility":"public","moderation_status":"visible"}`, `{"visibility":"public","verified_alumni":true}`, `{"visibility":"PUBLIC"}`, `{}`} {
 		call("PATCH", "/users/me/profile/privacy", []byte(bad), "application/json", "valid", 400)
 	}
-	call("PATCH", "/users/me/profile/privacy", []byte(`{"visibility":"public"}`), "application/json", "valid", 200)
+	privacyETag := call("GET", "/users/me/profile/privacy", nil, "", "valid", 200).Header().Get("ETag")
+	if privacyETag == "" {
+		t.Fatal("missing original privacy ETag")
+	}
+	call("PATCH", "/users/me/profile/privacy", []byte(`{"visibility":"public"}`), "application/json", "valid", 428, "")
+	call("PATCH", "/users/me/profile/privacy", []byte(`{"visibility":"public"}`), "application/json", "valid", 200, privacyETag)
+	call("PATCH", "/users/me/profile/privacy", []byte(`{"visibility":"public"}`), "application/json", "valid", 412, privacyETag)
 	_, err = db.Exec(ctx, `INSERT INTO memberships(user_id,study_program_id,role,status,graduation_year) SELECT $1,id,'alumni','pending',2020 FROM study_programs LIMIT 1`, u.ID)
 	if err != nil {
 		t.Fatal(err)
