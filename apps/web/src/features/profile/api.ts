@@ -66,12 +66,16 @@ export const ownerPath = '/users/me'
 export const publicKey = ['public-profile'] as const
 export function useOwnerQuery<T>(resource: string) {
   const { getToken, user } = useAuth()
+  const versioned = resource === 'profile' || resource === 'profile/privacy' || resource === 'profile/discovery'
   return useQuery({
     queryKey: ['professional', user?.id, resource],
     queryFn: ({ signal }) =>
-      resource === 'profile' || resource === 'profile/privacy' || resource === 'profile/discovery'
+      versioned
         ? versionedRequest(`${ownerPath}/${resource}`, getToken, { signal }) as Promise<T>
         : request<T>(`${ownerPath}/${resource}`, getToken, { signal }),
+    // The validator is intentionally non-enumerable on the response body.
+    // Deep structural sharing would copy a changed body without its ETag.
+    structuralSharing: !versioned,
     retry: false,
   })
 }

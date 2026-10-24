@@ -55,9 +55,16 @@ describe('owner discovery consent', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(/changed in another session/)
     const calls = vi.mocked(fetch).mock.calls
     const patchCall = calls.find(([, init]) => init?.method === 'PATCH')
-    expect((patchCall?.[1]?.headers as Record<string, string>)['If-Match']).toBe('"ab-privacy-v1"')
+    expect((patchCall?.[1]?.headers as Record<string, string> | undefined)?.['If-Match']).toBe('"ab-privacy-v1"')
     expect(screen.getByRole('checkbox', { name: /Include my profile/ })).toBeChecked()
     expect(settings.directory_discoverable).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Reload settings' }))
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: /Include my profile/ })).not.toBeChecked())
+    fireEvent.click(screen.getByRole('checkbox', { name: /Include my profile/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save discovery settings' }))
+    await screen.findByText(/can now appear/)
+    const retryCall = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'PATCH')[1]
+    expect((retryCall?.[1]?.headers as Record<string, string> | undefined)?.['If-Match']).toBe('"ab-privacy-v2"')
   })
   it('retains unsaved academic choices after a transient background GET failure', async () => {
     mount()

@@ -20,7 +20,8 @@ export function PrivacyPage() {
   const profile = useOwnerQuery<Profile>('profile')
   if (privacy.isPending || profile.isPending)
     return <Loading label="Loading privacy settings…" />
-  if (privacy.error || profile.error)
+  if ((privacy.error && (!privacy.data || (privacy.error instanceof ApiError && privacy.error.status === 401))) ||
+      (profile.error && (!profile.data || (profile.error instanceof ApiError && profile.error.status === 401))))
     return (
       <LoadError
         error={privacy.error || profile.error}
@@ -38,17 +39,28 @@ export function PrivacyPage() {
           <p>Choose what the world can see.</p>
         </div>
       </div>
-      <PrivacyForm initial={privacy.data} slug={profile.data.slug} />
+      {(privacy.error || profile.error) && <p role="alert" className="profile-error">Settings could not be refreshed. Your draft is preserved; retry before saving.</p>}
+      <PrivacyForm
+        initial={privacy.data}
+        slug={profile.data.slug}
+        onReload={async () => {
+          const result = await privacy.refetch()
+          if (result.error || !result.data) throw result.error || new Error('Privacy settings unavailable')
+          return result.data
+        }}
+      />
       <DiscoveryPanel visibility={privacy.data.visibility} />
     </>
   )
 }
-function PrivacyForm({ initial, slug }: { initial: Privacy; slug: string }) {
+function PrivacyForm({ initial, slug, onReload }: { initial: Privacy; slug: string; onReload: () => Promise<Privacy> }) {
   const [values, setValues] = useState(initial)
   const [saved, setSaved] = useState(initial)
   const [consent, setConsent] = useState(false)
   const [message, setMessage] = useState('')
   const [validation, setValidation] = useState('')
+  const [latest, setLatest] = useState<Privacy>()
+  const [reloadError, setReloadError] = useState(false)
   const mutation = useOwnerMutation(async (patch: Partial<Privacy>, token) => {
     if (!saved.__etag) throw new ApiError(428, 'revision_missing')
     // The validator belongs to the original displayed draft, not a preflight GET.
@@ -191,7 +203,28 @@ function PrivacyForm({ initial, slug }: { initial: Privacy; slug: string }) {
           ) : (
             <Feedback error={mutation.error} message={message} />
           )}
-          <div className="form-actions">
+        {latest && (
+          <div role="status" className="consent-box">
+            <p>Current saved visibility: <strong>{latest.visibility}</strong>. Review your draft above before choosing which settings to keep.</p>
+            <p>Current optional fields: {Object.entries(privacyFields)
+              .filter(([key]) => latest[key as keyof typeof privacyFields])
+              .map(([, label]) => label).join(', ') || 'none'}.</p>
+            <Button type="button" variant="outline" onClick={() => {
+              setSaved(latest)
+              setValues(latest)
+              setConsent(false)
+              setLatest(undefined)
+              mutation.reset()
+            }}>
+              Use current saved settings
+            </Button>
+          </div>
+        )}
+        {reloadError && <p role="alert" className="profile-error">Could not reload current settings. Your draft is preserved.</p>}
+        <div className="form-actions">
+          <Button type="button" variant="outline" disabled={mutation.isPending} onClick={() => {
+            void onReload().then((result) => { setLatest(result); setReloadError(false) }).catch(() => setReloadError(true))
+          }}>Reload current settings</Button>
             <Button disabled={mutation.isPending}>
               {mutation.isPending ? 'Saving…' : 'Save privacy settings'}
             </Button>

@@ -373,6 +373,20 @@ describe('experience and education', () => {
     click('Remove entry')
     expect(await screen.findByText(/Add where you learned/)).toBeInTheDocument()
   })
+  it('keeps a selected history item when deletion meets a stale revision', async () => {
+    experiences = [{ id: 'selected-item', revision: 3, company: 'Campus Lab', job_title: 'Researcher', start_date: '2024-02-01' }]
+    rejectPath = '/users/me/experiences/selected-item'
+    rejectStatus = 412
+    renderPage(<HistorySection kind="experiences" />)
+    await screen.findByRole('heading', { name: 'Researcher' })
+    click('Delete experience 1')
+    click('Remove entry')
+    expect(await screen.findByText(/changed in another session/)).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Remove experience?' })).toBeInTheDocument()
+    const deletion = calls.find((call) => call.method === 'DELETE')
+    expect((deletion?.headers as Record<string, string> | undefined)?.['If-Match']).toBe('"ab-experience-selected-item-v3"')
+    expect(experiences).toHaveLength(1)
+  })
 })
 
 describe('skills and photos', () => {
@@ -475,6 +489,29 @@ describe('privacy and public projection', () => {
     expect(privacyPatches).toHaveLength(1)
     expect((privacyPatches[0].headers as Record<string, string>)['If-Match']).toBe('"ab-privacy-v1"')
     expect(savedPrivacy.visibility).toBe('public')
+    click('Reload current settings')
+    expect(await screen.findByText(/Current saved visibility:/)).toHaveTextContent('public')
+    expect(screen.getByRole('radio', { name: /^Private/ })).toBeChecked()
+    expect(calls.filter((call) => call.method === 'PATCH' && call.path === '/users/me/profile/privacy')).toHaveLength(1)
+    click('Use current saved settings')
+    expect(screen.getByRole('radio', { name: /^Public/ })).toBeChecked()
+    fireEvent.click(screen.getByRole('radio', { name: /^Private/ }))
+    click('Save privacy settings')
+    await screen.findByText(/Profile is private. New anonymous/)
+    const patches = calls.filter((call) => call.method === 'PATCH' && call.path === '/users/me/profile/privacy')
+    expect(patches).toHaveLength(2)
+    expect((patches[1].headers as Record<string, string>)['If-Match']).toBe('"ab-privacy-v2"')
+  })
+  it('keeps a privacy draft when the explicit server reload fails', async () => {
+    renderPage(<PrivacyPage />)
+    fireEvent.click(await screen.findByRole('radio', { name: /^Public/ }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'About' }))
+    vi.mocked(fetch).mockRejectedValueOnce(new TypeError('offline'))
+    click('Reload current settings')
+    expect(await screen.findByText(/Could not reload current settings/)).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /^Public/ })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'About' })).toBeChecked()
+    expect(calls.filter((call) => call.method === 'PATCH')).toHaveLength(0)
   })
   it('renders a public allowlist anonymously without owner requests or verification inference', async () => {
     savedPrivacy.visibility = 'public'
