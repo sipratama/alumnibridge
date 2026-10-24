@@ -36,7 +36,8 @@ func (h *Handler) getDiscovery(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	write(w, 200, out)
+	w.Header().Set("ETag",resourceETag("privacy",out.Revision))
+ write(w, 200, out)
 }
 func (h *Handler) updateDiscovery(w http.ResponseWriter, r *http.Request) {
 	patch, err := decodeDiscovery(r)
@@ -52,12 +53,16 @@ func (h *Handler) updateDiscovery(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	out, err := h.discovery.Update(r.Context(), ownerID, patch)
+	expected, conditionalErr := parseExpectedRevision(r,"privacy")
+ if conditionalErr == errInvalidPrecondition {fail(w,profiles.ErrInvalid);return}
+ var out profiles.Discovery
+ if conditionalErr == errMissingPrecondition {out,err=h.discovery.Update(r.Context(),ownerID,patch)} else {out,err=h.discovery.UpdateConditional(r.Context(),ownerID,patch,expected)}
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	write(w, 200, out)
+	w.Header().Set("ETag",resourceETag("privacy",out.Revision))
+ write(w, 200, out)
 }
 func decodeDiscovery(r *http.Request) (profiles.DiscoveryPatch, error) {
 	var out profiles.DiscoveryPatch
