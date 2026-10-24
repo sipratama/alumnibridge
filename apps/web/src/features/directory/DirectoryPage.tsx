@@ -33,7 +33,9 @@ export function DirectoryPage() {
     staleTime: 0,
     gcTime: 0,
     refetchOnMount: 'always',
-    refetchOnWindowFocus: 'always',
+    refetchOnWindowFocus: (active) => active.state.error instanceof DirectoryError && [429, 503].includes(active.state.error.status) ? false : 'always',
+    refetchInterval: (active) => active.state.fetchStatus === 'fetching' || active.state.error ? false : 15_000,
+    refetchIntervalInBackground: false,
   })
   useLayoutEffect(() => {
     const region = resultsRegion.current
