@@ -1,7 +1,7 @@
 # Issue #11 — Implementation phases and release gates
 
-**Status:** In progress. Migration storage drafted; end-to-end optimistic concurrency protection is **NOT IMPLEMENTED OR TESTED**.  
-**Approved design:** [ADR 0003 proposal](decisions/0003-atomic-optimistic-concurrency-proposal.md) (maintainer approved 2026-10-24).  
+**Status:** In progress. Migration storage drafted; end-to-end optimistic concurrency protection is **NOT IMPLEMENTED OR TESTED**.
+**Approved design:** [ADR 0003 proposal](decisions/0003-atomic-optimistic-concurrency-proposal.md) (maintainer approved 2026-10-24).
 **Branch:** `security/issue-11-optimistic-concurrency` from design commit `cba2ca0`.
 
 ## Phase A — Migration and PostgreSQL revision groundwork
