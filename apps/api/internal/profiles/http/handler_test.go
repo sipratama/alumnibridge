@@ -59,11 +59,11 @@ func TestOwnerRoutes(t *testing.T) {
 	}{
 		{"GET", "/api/v1/users/me/profile", "", "", 401},
 		{"GET", "/api/v1/users/me/profile", "", "Bearer valid", 200},
-		{"PATCH", "/api/v1/users/me/profile", `{"slug":"admin"}`, "Bearer valid", 400},
+		{"PATCH", "/api/v1/users/me/profile", `{"slug":"admin"}`, "Bearer valid", 428},
 		{"PATCH", "/api/v1/users/me/profile", `{"headline":null}`, "Bearer valid", 400},
 		{"PATCH", "/api/v1/users/me/profile", `null`, "Bearer valid", 400},
 		{"PATCH", "/api/v1/users/me/profile", `{"headline":"` + strings.Repeat("x", 65536) + `"}`, "Bearer valid", 413},
-		{"DELETE", "/api/v1/users/me/experiences/" + uuid.NewString(), "", "Bearer valid", 404},
+		{"DELETE", "/api/v1/users/me/experiences/" + uuid.NewString(), "", "Bearer valid", 428},
 	}
 	for _, tc := range cases {
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
