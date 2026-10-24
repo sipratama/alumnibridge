@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+ "fmt"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -73,6 +74,28 @@ func TestReviewAuthenticatedAPIAndConcurrency(t *testing.T) {
 		if tok != "" {
 			req.Header.Set("Authorization", "Bearer "+tok)
 		}
+        if method == "PATCH" && path == "/users/me/profile" {
+          actor := subjectA
+          if tok == tb { actor = subjectB }
+          var ownerID uuid.UUID
+          if err := db.QueryRow(ctx, `SELECT id FROM users WHERE oidc_subject=$1`, actor).Scan(&ownerID); err == nil {
+            var revision int64
+            if err := db.QueryRow(ctx, `SELECT content_revision FROM profiles WHERE user_id=$1`, ownerID).Scan(&revision); err == nil {
+              req.Header.Set("If-Match", fmt.Sprintf(`"ab-profile-v%d"`,revision))
+            }
+          }
+        }
+        if strings.HasPrefix(path,"/users/me/experiences/") || strings.HasPrefix(path,"/users/me/educations/") {
+          kind := "experience"
+          table := "profile_experiences"
+          if strings.Contains(path,"/educations/"){kind="education";table="profile_educations"}
+          item,err:=uuid.Parse(path[strings.LastIndex(path,"/")+1:]);if err==nil {
+            var rev int64
+            err=db.QueryRow(ctx,`SELECT revision FROM `+table+` WHERE id=$1`,item).Scan(&rev)
+            if err!=nil {rev=1}
+            req.Header.Set("If-Match",fmt.Sprintf(`"ab-%s-v%d"`,kind,rev))
+          }
+        }
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
 		if w.Code != want {
