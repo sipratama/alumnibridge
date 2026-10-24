@@ -3,7 +3,7 @@
 Date: 2026-10-24 (Asia/Jakarta).
 Branch: `feature/milestone-4-alumni-directory`.
 Implementation base: `f1a7193` (approved Phase A; master base `1537c88`).
-Status: **READY FOR PHASE B REVIEW**. No Phase C/D/E implementation or production approval.
+Status: **Reviewed with conditions for Phase C; user approval required before further implementation**. See the [independent Phase B review](reviews/milestone-4-phase-b-review.md). No Phase C/D/E implementation or production approval.
 
 ## Scope and architecture
 
@@ -58,7 +58,7 @@ The existing Milestone 3 privacy UPDATE acquires the profile row lock. The new `
 
 ### Why membership locks precede profile locks
 
-This deliberately refines Phase A's preliminary profile-first order. A membership DELETE already locks its membership tuple; FK cascades can then lock affiliation children. The membership BEFORE trigger locks the owner profile before child deletion. Discovery follows **membership → profile → affiliation** to avoid reversing that lifecycle order. Privacy writes use **profile → affiliation** and do not lock memberships. The reads used to find owner affiliations do not take membership row locks.
+This deliberately refines Phase A's preliminary profile-first order. A membership DELETE already locks its membership tuple; FK cascades can then lock affiliation children. The membership BEFORE trigger locks the owner profile before child deletion. Discovery follows **membership → profile → affiliation** to avoid reversing that lifecycle order. Privacy writes use **profile → affiliation** and do not lock memberships. The review also changed profile editing to lock **user → profile**, consistent with onboarding/account deletion, after reproducing an opposite-order deadlock. The reads used to find owner affiliations do not take membership row locks.
 
 Future bulk verification writers must lock all affected memberships in UUID order before profiles, and use deterministic owner ordering for cross-owner work. Arbitrary privileged bulk SQL can still encounter a database-detected deadlock and must retry the entire aborted transaction; PostgreSQL must never be configured to ignore trigger failures. This is not a reason to weaken withdrawal safeguards.
 
@@ -79,7 +79,7 @@ These safeguards are narrowly scoped database functions/triggers, not a new auth
 
 ## Search and privacy rules
 
-- `query`: 2–100-character display-name literal prefix; `company`/`job_title`: 2–160-character published-field literal prefixes. Normalize whitespace and case; escape LIKE percent, underscore and backslash. No regex/fuzzy/wildcard language.
+- `query`: 2–100-character display-name literal prefix; `company`/`job_title`: 2–160-character published-field literal prefixes. Normalize with Go Unicode simple lowercase and Unicode whitespace collapse on both query and stored values; the SQL adapter uses the same Go-derived translation map under C collation, avoiding libc/locale drift. No accent stripping or expanding folds. Escape LIKE percent, underscore and backslash. No regex/fuzzy/wildcard language.
 - `institution`/`study_program`: exact lowercase public reference slugs (1–64); program requires institution. `graduation_year`: 1950–2100. Combined academic filters must match the same consented verified membership. Pending affiliations never borrow verification from another membership.
 - Repeated `skills`: up to five exact normalized unique names, all must match and `show_skills` must be enabled. Controls, invalid text and equivalent duplicates are rejected.
 - All filters combine with AND. Reject unknown parameters, duplicate scalar keys, explicit empty values, malformed integers, invalid UTF-8/control text and raw query strings over 4096 bytes.
@@ -140,7 +140,7 @@ go build ./cmd/api
 
 The tests generate their own cursor material and signed JWTs; no live Keycloak credentials or real accounts are needed. Remove only the disposable database/containers/network created for this run. [Windows verification](windows-verification.md) supplies project-scoped PowerShell instructions, reviewed but unexecuted on Windows.
 
-The existing [CI workflow](../.github/workflows/ci.yml) already applies every migration and executes all Go packages with explicit disposable PostgreSQL/MinIO variables. It will discover the new unit/integration tests automatically; the new CI-only cursor key documents mandatory configuration. Local CI-equivalent commands passed. This branch has not been pushed and no new GitHub Actions run is claimed. Master branch-protection follow-up #10 remains separate.
+The existing [CI workflow](../.github/workflows/ci.yml) already applies every migration and executes all Go packages with explicit disposable PostgreSQL/MinIO variables. It will discover the new unit/integration tests automatically; the new CI-only cursor key documents mandatory configuration. Local CI-equivalent commands passed. The implementation was subsequently pushed at `3d28c8b`; its exact-SHA workflow_dispatch [run 40066120046](https://github.com/sipratama/alumnibridge/actions/runs/40066120046) passed during review. Additional review remediation remains local and has not run in GitHub Actions. Master branch-protection follow-up #10 remains separate.
 
 ## Changed file inventory
 

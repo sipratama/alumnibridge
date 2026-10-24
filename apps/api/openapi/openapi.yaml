@@ -224,7 +224,7 @@ paths:
           image/webp: {schema: {type: string, format: binary}}
       responses:
         '201': {description: Photo stored, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {photo_url: {type: string, const: /api/v1/users/me/profile/photo}}, required: [photo_url]}}}}
-        '400': {description: Malformed image, MIME/content mismatch, or invalid dimensions}
+        '400': {description: 'Malformed image, MIME/content mismatch, or invalid dimensions'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '413': {description: Image exceeds 5 MiB}
         '415': {description: Unsupported image media type}
@@ -252,7 +252,7 @@ paths:
       description: >-
         Requires PUBLIC, moderator VISIBLE, explicit directory opt-in and a trusted verified alumni membership.
         Company/title/skills match only published fields. Academic filters match one verified membership with explicit field consent.
-        All filters combine with AND. Prefixes are literal, case-insensitive and whitespace-normalized; no wildcard or regex language.
+        All filters combine with AND. Prefixes use Go Unicode simple lowercase and Unicode whitespace collapse on both query and stored values, independent of PostgreSQL locale; no accent stripping, expanding case fold, wildcard or regex language.
         Unknown/empty parameters, duplicate scalar keys, invalid UTF-8/control text or query strings over 4096 bytes are rejected.
         Unknown valid reference values yield no results. Canonical slug ascending in C collation; no totals, facets or offset.
         Every page rechecks consent. Live pagination is not a cross-request snapshot; renames may cause skips/repeats.
