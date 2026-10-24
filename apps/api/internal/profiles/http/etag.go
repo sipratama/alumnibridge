@@ -53,3 +53,11 @@ func parseExpectedRevision(r *http.Request, resource string) (int64, error) {
     }
     return revision, nil
 }
+
+// requireRevision enforces conditional writes on authenticated owner resources.
+// Missing validators return 428; malformed or cross-resource values return 400.
+func requireRevision(r *http.Request, resource string) (int64, error) {
+ rev, err := parseExpectedRevision(r, resource)
+ if err != nil {return 0, err}
+ return rev,nil
+}
