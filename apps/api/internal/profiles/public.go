@@ -65,6 +65,7 @@ type PrivacyPatch struct {
 	ShowSkills          *bool  `json:"show_skills"`
 	ShowPhoto           *bool  `json:"show_photo"`
 }
+
 // ConditionalPrivacyStore is the opt-in atomic write contract while legacy
 // clients migrate to mandatory If-Match. The HTTP route uses this only when
 // an expected revision is supplied; old clients remain a production gate.
@@ -91,6 +92,15 @@ type PublicationStore interface {
 	ActivatePhoto(context.Context, uuid.UUID, string) error
 	RemovePhoto(context.Context, uuid.UUID) error
 	CleanupPhotos(context.Context, func(context.Context, string) error) error
+}
+
+// Photo pointer writes use the profile-content validator. The object registry
+// is separate so a rejected activation can be collected without touching the
+// currently published pointer.
+type ConditionalPhotoStore interface {
+	ActivatePhotoConditional(context.Context, uuid.UUID, string, int64) (int64, error)
+	RemovePhotoConditional(context.Context, uuid.UUID, int64) (int64, error)
+	DiscardStagedPhoto(context.Context, uuid.UUID, string) error
 }
 type PhotoStorage interface {
 	Put(context.Context, string, []byte, string) error
@@ -127,7 +137,9 @@ func (s *PublishingService) UpdatePrivacyConditional(ctx context.Context, id uui
 		return Privacy{}, ErrInvalid
 	}
 	conditional, ok := s.store.(ConditionalPrivacyStore)
-	if !ok { return Privacy{}, ErrInvalid }
+	if !ok {
+		return Privacy{}, ErrInvalid
+	}
 	return conditional.UpdatePrivacyConditional(ctx, id, p, expected)
 }
 func (s *PublishingService) UpdatePrivacy(ctx context.Context, id uuid.UUID, p PrivacyPatch) (Privacy, error) {

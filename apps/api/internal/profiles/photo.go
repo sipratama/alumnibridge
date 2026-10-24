@@ -8,6 +8,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"time"
 
 	"github.com/google/uuid"
 	_ "golang.org/x/image/webp"
@@ -74,41 +75,87 @@ func NormalizePhoto(data []byte, declared string) ([]byte, string, error) {
 	return out.Bytes(), kind, nil
 }
 func (s *PublishingService) UploadPhoto(ctx context.Context, id uuid.UUID, input io.Reader, declared string) error {
+	_, err := s.uploadPhoto(ctx, id, input, declared, 0)
+	return err
+}
+func (s *PublishingService) UploadPhotoConditional(ctx context.Context, id uuid.UUID, input io.Reader, declared string, expected int64) (int64, error) {
+	if expected < 1 {
+		return 0, ErrInvalid
+	}
+	if _, ok := s.store.(ConditionalPhotoStore); !ok {
+		return 0, ErrInvalid
+	}
+	return s.uploadPhoto(ctx, id, input, declared, expected)
+}
+func (s *PublishingService) uploadPhoto(ctx context.Context, id uuid.UUID, input io.Reader, declared string, expected int64) (int64, error) {
 	if photoFormat(declared) == "" {
-		return ErrPhotoFormat
+		return 0, ErrPhotoFormat
 	}
 	select {
 	case s.photoSlots <- struct{}{}:
 		defer func() { <-s.photoSlots }()
 	case <-ctx.Done():
-		return ctx.Err()
+		return 0, ctx.Err()
 	}
 	if err := ctx.Err(); err != nil {
-		return err
+		return 0, err
 	}
 	data, err := io.ReadAll(io.LimitReader(input, MaxPhotoBytes+1))
 	if err != nil {
-		return ErrInvalid
+		return 0, ErrInvalid
 	}
 	if len(data) > MaxPhotoBytes {
-		return ErrPhotoTooLarge
+		return 0, ErrPhotoTooLarge
 	}
 	body, kind, err := NormalizePhoto(data, declared)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	p := Photo{Key: "photos/" + uuid.NewString(), ContentType: kind, Size: int64(len(body))}
 	// Registration commits before Put: failed uploads and failed activations remain discoverable by cleanup.
 	if err = s.store.StagePhoto(ctx, id, p); err != nil {
-		return err
+		return 0, err
 	}
 	if err = s.storage.Put(ctx, p.Key, body, p.ContentType); err != nil {
-		return ErrStorage
+		s.discardStagedPhoto(ctx, id, p.Key)
+		return 0, ErrStorage
 	}
-	return s.store.ActivatePhoto(ctx, id, p.Key)
+	if expected == 0 {
+		err = s.store.ActivatePhoto(ctx, id, p.Key)
+		if err != nil {
+			s.discardStagedPhoto(ctx, id, p.Key)
+		}
+		return 0, err
+	}
+	revision, err := s.store.(ConditionalPhotoStore).ActivatePhotoConditional(ctx, id, p.Key, expected)
+	if err != nil {
+		s.discardStagedPhoto(ctx, id, p.Key)
+	}
+	return revision, err
+}
+func (s *PublishingService) discardStagedPhoto(ctx context.Context, id uuid.UUID, key string) {
+	conditional, ok := s.store.(ConditionalPhotoStore)
+	if !ok {
+		return
+	}
+	// A disconnected request must still persist cleanup intent. The existing
+	// expiration and retry worker cover a transient database/storage outage.
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	_ = conditional.DiscardStagedPhoto(cleanup, id, key)
 }
 func (s *PublishingService) RemovePhoto(ctx context.Context, id uuid.UUID) error {
 	return s.store.RemovePhoto(ctx, id)
+}
+func (s *PublishingService) RemovePhotoConditional(ctx context.Context, id uuid.UUID, expected int64) (int64, error) {
+	if expected < 1 {
+		return 0, ErrInvalid
+	}
+	conditional, ok := s.store.(ConditionalPhotoStore)
+	if !ok {
+		return 0, ErrInvalid
+	}
+	return conditional.RemovePhotoConditional(ctx, id, expected)
 }
 func (s *PublishingService) OwnerPhoto(ctx context.Context, id uuid.UUID) (Photo, io.ReadCloser, error) {
 	p, err := s.store.OwnerPhoto(ctx, id)

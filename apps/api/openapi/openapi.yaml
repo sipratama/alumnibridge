@@ -234,8 +234,9 @@ paths:
         '503': {description: Photo storage unavailable}
     post:
       summary: Upload or replace the owner's photo using raw image bytes
-      description: At most four uploads buffer/process bodies concurrently per API process; streamed bodies are limited without relying on Content-Length. Maximum 5 MiB input and normalized output; dimensions at most 4096 per side and 8 million pixels. JPEG is re-encoded, PNG and WebP become PNG; metadata is discarded. Filenames and object keys are never accepted. Replaced and abandoned objects are collected by a durable retry worker.
+      description: Requires the strong ETag from GET /users/me/profile in If-Match. The profile-content revision is compared atomically when the photo pointer changes; stale staged objects are queued for durable cleanup. At most four uploads buffer/process bodies concurrently per API process; streamed bodies are limited without relying on Content-Length. Maximum 5 MiB input and normalized output; dimensions at most 4096 per side and 8 million pixels. JPEG is re-encoded, PNG and WebP become PNG; metadata is discarded. Filenames and object keys are never accepted. Replaced and abandoned objects are collected by a durable retry worker.
       security: [{bearerAuth: []}]
+      parameters: [{name: If-Match, in: header, required: true, schema: {type: string}, description: 'Strong owner profile ETag from the original photo action'}]
       requestBody:
         required: true
         content:
@@ -243,19 +244,26 @@ paths:
           image/png: {schema: {type: string, format: binary}}
           image/webp: {schema: {type: string, format: binary}}
       responses:
-        '201': {description: Photo stored, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {photo_url: {type: string, const: /api/v1/users/me/profile/photo}}, required: [photo_url]}}}}
+        '201': {description: Photo stored; ETag contains the new profile-content validator, headers: {ETag: {schema: {type: string}}}, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {photo_url: {type: string, const: /api/v1/users/me/profile/photo}}, required: [photo_url]}}}}
         '400': {description: 'Malformed image, MIME/content mismatch, or invalid dimensions'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {description: Owner profile absent}
+        '412': {description: Stale profile-content revision; staged object queued for cleanup}
+        '428': {description: If-Match required}
         '413': {description: Image exceeds 5 MiB}
         '415': {description: Unsupported image media type}
         '503': {description: Photo storage unavailable}
     delete:
       summary: Remove owner photo metadata immediately and queue object deletion
+      description: Requires the strong ETag from GET /users/me/profile in If-Match. Deletion compares the profile-content revision atomically before changing the pointer.
       security: [{bearerAuth: []}]
+      parameters: [{name: If-Match, in: header, required: true, schema: {type: string}, description: 'Strong owner profile ETag from the original photo action'}]
       responses:
-        '204': {description: Photo absent; deletion retries durably if storage is unavailable}
+        '204': {description: Photo absent; ETag contains the current profile-content validator; object deletion retries durably if storage is unavailable, headers: {ETag: {schema: {type: string}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {description: Profile absent}
+        '412': {description: Stale profile-content revision}
+        '428': {description: If-Match required}
   /api/v1/profiles/{slug}/photo:
     parameters: [{name: slug, in: path, required: true, schema: {type: string, minLength: 3, maxLength: 64}}]
     get:

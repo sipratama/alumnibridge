@@ -288,6 +288,13 @@ func (s *Store) AddSkill(ctx context.Context, id uuid.UUID, name, key string) (p
 	if err != nil {
 		return profiles.Skill{}, dbError(err)
 	}
+	// Serialize this owner's set operations before checking whether a link
+	// already exists. Otherwise an add can return success for a link that a
+	// concurrent delete removed before the add committed.
+	var locked uuid.UUID
+	if err = tx.QueryRow(ctx, `SELECT id FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&locked); err != nil {
+		return profiles.Skill{}, missing(err)
+	}
 	var linkID uuid.UUID
 	err = tx.QueryRow(ctx, `SELECT id FROM profile_skills WHERE user_id=$1 AND skill_id=$2`, id, skillID).Scan(&linkID)
 	if err == nil {
@@ -306,14 +313,23 @@ func (s *Store) AddSkill(ctx context.Context, id uuid.UUID, name, key string) (p
 	return profiles.Skill{ID: linkID, Name: canonical}, tx.Commit(ctx)
 }
 func (s *Store) DeleteSkill(ctx context.Context, id, item uuid.UUID) error {
-	tag, err := s.db.Exec(ctx, `DELETE FROM profile_skills WHERE id=$1 AND user_id=$2`, item, id)
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var locked uuid.UUID
+	if err = tx.QueryRow(ctx, `SELECT id FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&locked); err != nil {
+		return missing(err)
+	}
+	tag, err := tx.Exec(ctx, `DELETE FROM profile_skills WHERE id=$1 AND user_id=$2`, item, id)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
 		return profiles.ErrNotFound
 	}
-	return nil
+	return tx.Commit(ctx)
 }
 
 func (s *Store) UpdateProfileRevision(ctx context.Context, id uuid.UUID, expected int64, change func(profiles.Profile) (profiles.Profile, error)) (profiles.Profile, error) {
