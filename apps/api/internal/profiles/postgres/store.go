@@ -169,7 +169,7 @@ func (s *Store) Experiences(ctx context.Context, id uuid.UUID) ([]profiles.Exper
 func (s *Store) SaveExperience(ctx context.Context, id uuid.UUID, e profiles.Experience, update bool) (profiles.Experience, error) {
 	var err error
 	if update {
-		err = s.db.QueryRow(ctx, `UPDATE profile_experiences SET company=$3,title=$4,employment_type=$5,location=$6,start_date=$7,end_date=$8,is_current=$9,description=$10,updated_at=now() WHERE id=$1 AND user_id=$2 RETURNING id`, e.ID, id, e.Company, e.JobTitle, e.EmploymentType, e.Location, e.StartDate, e.EndDate, e.IsCurrent, e.Description).Scan(&e.ID)
+		err = s.db.QueryRow(ctx, `UPDATE profile_experiences SET company=$3,title=$4,employment_type=$5,location=$6,start_date=$7,end_date=$8,is_current=$9,description=$10,updated_at=now() WHERE id=$1 AND user_id=$2 RETURNING id,revision`, e.ID, id, e.Company, e.JobTitle, e.EmploymentType, e.Location, e.StartDate, e.EndDate, e.IsCurrent, e.Description).Scan(&e.ID,&e.Revision)
 	} else {
 		tx, beginErr := s.db.Begin(ctx)
 		if beginErr != nil {
@@ -179,7 +179,7 @@ func (s *Store) SaveExperience(ctx context.Context, id uuid.UUID, e profiles.Exp
 		if err = collectionSlot(ctx, tx, id, "profile_experiences"); err != nil {
 			return e, err
 		}
-		err = tx.QueryRow(ctx, `INSERT INTO profile_experiences(user_id,company,title,employment_type,location,start_date,end_date,is_current,description) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`, id, e.Company, e.JobTitle, e.EmploymentType, e.Location, e.StartDate, e.EndDate, e.IsCurrent, e.Description).Scan(&e.ID)
+		err = tx.QueryRow(ctx, `INSERT INTO profile_experiences(user_id,company,title,employment_type,location,start_date,end_date,is_current,description) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,revision`, id, e.Company, e.JobTitle, e.EmploymentType, e.Location, e.StartDate, e.EndDate, e.IsCurrent, e.Description).Scan(&e.ID,&e.Revision)
 		if err != nil {
 			return e, dbError(err)
 		}
@@ -216,7 +216,7 @@ func (s *Store) Educations(ctx context.Context, id uuid.UUID) ([]profiles.Educat
 func (s *Store) SaveEducation(ctx context.Context, id uuid.UUID, e profiles.Education, update bool) (profiles.Education, error) {
 	var err error
 	if update {
-		err = s.db.QueryRow(ctx, `UPDATE profile_educations SET institution_name=$3,degree=$4,field_of_study=$5,start_date=$6,end_date=$7,description=$8,updated_at=now() WHERE id=$1 AND user_id=$2 RETURNING id`, e.ID, id, e.Institution, e.Degree, e.FieldOfStudy, e.StartDate, e.EndDate, e.Description).Scan(&e.ID)
+		err = s.db.QueryRow(ctx, `UPDATE profile_educations SET institution_name=$3,degree=$4,field_of_study=$5,start_date=$6,end_date=$7,description=$8,updated_at=now() WHERE id=$1 AND user_id=$2 RETURNING id,revision`, e.ID, id, e.Institution, e.Degree, e.FieldOfStudy, e.StartDate, e.EndDate, e.Description).Scan(&e.ID,&e.Revision)
 	} else {
 		tx, beginErr := s.db.Begin(ctx)
 		if beginErr != nil {
@@ -226,7 +226,7 @@ func (s *Store) SaveEducation(ctx context.Context, id uuid.UUID, e profiles.Educ
 		if err = collectionSlot(ctx, tx, id, "profile_educations"); err != nil {
 			return e, err
 		}
-		err = tx.QueryRow(ctx, `INSERT INTO profile_educations(user_id,institution_name,degree,field_of_study,start_date,end_date,description) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`, id, e.Institution, e.Degree, e.FieldOfStudy, e.StartDate, e.EndDate, e.Description).Scan(&e.ID)
+		err = tx.QueryRow(ctx, `INSERT INTO profile_educations(user_id,institution_name,degree,field_of_study,start_date,end_date,description) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,revision`, id, e.Institution, e.Degree, e.FieldOfStudy, e.StartDate, e.EndDate, e.Description).Scan(&e.ID,&e.Revision)
 		if err != nil {
 			return e, dbError(err)
 		}
