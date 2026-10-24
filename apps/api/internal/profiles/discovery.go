@@ -34,6 +34,7 @@ type Discovery struct {
 	DirectoryConsentedAt  *time.Time            `json:"directory_consented_at"`
 	Eligible              bool                  `json:"eligible"`
 	EffectiveDiscoverable bool                  `json:"effective_discoverable"`
+	Revision              int64                 `json:"-"`
 	Memberships           []DiscoveryMembership `json:"memberships"`
 }
 type DiscoveryPatch struct {
@@ -68,11 +69,21 @@ type DiscoveryStore interface {
 	Discovery(context.Context, uuid.UUID) (Discovery, error)
 	UpdateDiscovery(context.Context, uuid.UUID, DiscoveryPatch) (Discovery, error)
 }
+type ConditionalDiscoveryStore interface {
+ UpdateDiscoveryConditional(context.Context, uuid.UUID, DiscoveryPatch, int64) (Discovery, error)
+}
 type DiscoveryService struct{ store DiscoveryStore }
 
 func NewDiscovery(store DiscoveryStore) *DiscoveryService { return &DiscoveryService{store: store} }
 func (s *DiscoveryService) Discovery(ctx context.Context, owner uuid.UUID) (Discovery, error) {
 	return s.store.Discovery(ctx, owner)
+}
+func (s *DiscoveryService) UpdateConditional(ctx context.Context, owner uuid.UUID, patch DiscoveryPatch, expected int64) (Discovery, error) {
+ if err := patch.Validate(); err != nil { return Discovery{}, err }
+ if expected < 1 { return Discovery{}, ErrInvalid }
+ store, ok := s.store.(ConditionalDiscoveryStore)
+ if !ok { return Discovery{}, ErrInvalid }
+ return store.UpdateDiscoveryConditional(ctx, owner, patch, expected)
 }
 func (s *DiscoveryService) Update(ctx context.Context, owner uuid.UUID, patch DiscoveryPatch) (Discovery, error) {
 	if err := patch.Validate(); err != nil {
