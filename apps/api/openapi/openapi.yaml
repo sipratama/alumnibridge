@@ -299,8 +299,6 @@ paths:
       responses:
         '200': {$ref: '#/components/responses/DiscoverySettings'}
         '401': {$ref: '#/components/responses/DiscoveryUnauthorized'}
-        '408': {$ref: '#/components/responses/DirectoryCanceled'}
-        '429': {$ref: '#/components/responses/DirectoryRateLimited'}
         '500': {$ref: '#/components/responses/DirectoryInternal'}
     patch:
       summary: Update owner-only discovery and academic publication consent atomically
@@ -325,8 +323,6 @@ paths:
         '409': {$ref: '#/components/responses/DiscoveryConflict'}
         '413': {$ref: '#/components/responses/DiscoveryTooLarge'}
         '415': {$ref: '#/components/responses/DiscoveryMedia'}
-        '408': {$ref: '#/components/responses/DirectoryCanceled'}
-        '429': {$ref: '#/components/responses/DirectoryRateLimited'}
         '500': {$ref: '#/components/responses/DirectoryInternal'}
 components:
   headers:
