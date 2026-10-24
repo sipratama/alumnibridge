@@ -6,7 +6,7 @@ import { ApiError } from '@/shared/api/client'
 import { useOwnerQuery } from '@/features/profile/api'
 import { LoadError, Loading } from '@/features/profile/components'
 import {
-  getDiscovery, updateDiscovery,
+  updateDiscovery,
   type AcademicConsent, type DiscoveryPatch, type DiscoverySettings,
 } from './api'
 
@@ -52,10 +52,9 @@ function DiscoveryForm({ initial, visibility, onReload }: { initial: DiscoverySe
     if (!Object.keys(patch).length) { setMessage('No changes to save.'); return }
     setBusy(true)
     try {
-      const latest = await getDiscovery(getToken, new AbortController().signal)
-      if (latest.directory_discoverable !== saved.directory_discoverable || JSON.stringify(choices(latest)) !== JSON.stringify(choices(saved)))
-        throw new ApiError(409, 'discovery_changed')
-      const result = await updateDiscovery(getToken, patch)
+      // Compare-and-set is enforced in PostgreSQL. Never fetch a newer ETag
+      // immediately before saving an older draft.
+      const result = await updateDiscovery(getToken, patch, saved.__etag)
       client.setQueryData(['professional', user?.id, 'profile/discovery'], result)
       setMessage(result.effective_discoverable ? 'Your profile can now appear in Alumni Directory.' : 'Directory discovery is off. Your academic choices are no longer published here.')
       client.removeQueries({ queryKey: ['directory'] })
@@ -64,7 +63,8 @@ function DiscoveryForm({ initial, visibility, onReload }: { initial: DiscoverySe
     } catch (failure) { setError(failure) } finally { setBusy(false) }
   }
   const errorText = error instanceof ApiError ?
-    error.code === 'discovery_changed' ? 'Discovery settings changed in another session. Reload them before saving.' :
+    error.status === 412 || error.code === 'discovery_changed' ? 'Discovery settings changed in another session. Your draft is preserved. Reload and review before saving again.' :
+      error.status === 428 ? 'The revision is missing. Reload your settings before saving.' :
       error.status === 401 ? 'Your session expired. Sign in again to update discovery.' :
         error.status === 404 ? 'Your profile or membership is no longer available. Reload this page.' :
           error.status === 409 ? 'Your current profile or verification status does not allow this choice. Reload your settings.' :
