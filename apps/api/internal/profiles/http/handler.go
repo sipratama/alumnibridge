@@ -209,7 +209,7 @@ func (h *Handler) saveExperience(w http.ResponseWriter, r *http.Request, update 
 		fail(w, err)
 		return
 	}
-	if update {expected,pe:=requireRevision(r,"experience");if pe!=nil{fail(w,pe);return};e,err=h.service.SaveExperienceRevision(r.Context(),u,e,expected)} else {e,err=h.service.SaveExperience(r.Context(),u,e,false)}
+	if update {expected,pe:=requireRevision(r,"experience-"+e.ID.String());if pe!=nil{fail(w,pe);return};e,err=h.service.SaveExperienceRevision(r.Context(),u,e,expected)} else {e,err=h.service.SaveExperience(r.Context(),u,e,false)}
 	if err != nil {
 		fail(w, err)
 		return
@@ -231,7 +231,7 @@ func (h *Handler) deleteExperience(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	expected,pe:=requireRevision(r,"experience");if pe!=nil{fail(w,pe);return}
+	expected,pe:=requireRevision(r,"experience-"+item.String());if pe!=nil{fail(w,pe);return}
  if err = h.service.DeleteExperienceRevision(r.Context(), u, item,expected); err != nil {
 		fail(w, err)
 		return
@@ -274,7 +274,7 @@ func (h *Handler) saveEducation(w http.ResponseWriter, r *http.Request, update b
 		fail(w, err)
 		return
 	}
-	if update {expected,pe:=requireRevision(r,"education");if pe!=nil{fail(w,pe);return};e,err=h.service.SaveEducationRevision(r.Context(),u,e,expected)} else {e,err=h.service.SaveEducation(r.Context(),u,e,false)}
+	if update {expected,pe:=requireRevision(r,"education-"+e.ID.String());if pe!=nil{fail(w,pe);return};e,err=h.service.SaveEducationRevision(r.Context(),u,e,expected)} else {e,err=h.service.SaveEducation(r.Context(),u,e,false)}
 	if err != nil {
 		fail(w, err)
 		return
@@ -296,7 +296,7 @@ func (h *Handler) deleteEducation(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	expected,pe:=requireRevision(r,"education");if pe!=nil{fail(w,pe);return}
+	expected,pe:=requireRevision(r,"education-"+item.String());if pe!=nil{fail(w,pe);return}
  if err = h.service.DeleteEducationRevision(r.Context(), u, item,expected); err != nil {
 		fail(w, err)
 		return
