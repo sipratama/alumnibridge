@@ -53,10 +53,9 @@ func (h *Handler) updateDiscovery(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	expected, conditionalErr := parseExpectedRevision(r,"privacy")
- if conditionalErr == errInvalidPrecondition {fail(w,profiles.ErrInvalid);return}
- var out profiles.Discovery
- if conditionalErr == errMissingPrecondition {out,err=h.discovery.Update(r.Context(),ownerID,patch)} else {out,err=h.discovery.UpdateConditional(r.Context(),ownerID,patch,expected)}
+	expected, conditionalErr := requireRevision(r, "privacy")
+ if conditionalErr != nil {fail(w, conditionalErr);return}
+ out, err := h.discovery.UpdateConditional(r.Context(),ownerID,patch,expected)
 	if err != nil {
 		fail(w, err)
 		return
