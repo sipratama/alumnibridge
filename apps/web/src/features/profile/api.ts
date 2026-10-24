@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/app/authContext'
-import { apiRequest, apiResponse, request, ApiError } from '@/shared/api/client'
+import { apiRequest, apiResponse, request, versionedRequest, ApiError, type WithETag } from '@/shared/api/client'
 
 export type Profile = {
   display_name: string
@@ -47,7 +47,7 @@ export const privacyFields = {
 export type Privacy = { visibility: 'private' | 'public' } & Record<
   keyof typeof privacyFields,
   boolean
->
+> & WithETag
 export type PublicProfile = Pick<
   Profile,
   'display_name' | 'slug' | 'headline'
@@ -69,7 +69,9 @@ export function useOwnerQuery<T>(resource: string) {
   return useQuery({
     queryKey: ['professional', user?.id, resource],
     queryFn: ({ signal }) =>
-      request<T>(`${ownerPath}/${resource}`, getToken, { signal }),
+      resource === 'profile/privacy' || resource === 'profile/discovery'
+        ? versionedRequest(`${ownerPath}/${resource}`, getToken, { signal }) as Promise<T>
+        : request<T>(`${ownerPath}/${resource}`, getToken, { signal }),
     retry: false,
   })
 }
@@ -128,6 +130,10 @@ export function errorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 401)
       return 'Your session expired. Sign in again to continue.'
+    if (error.status === 412)
+      return 'These settings changed in another session. Your edits are preserved; reload and review the latest values before retrying.'
+    if (error.status === 428)
+      return 'Your settings revision is unavailable. Reload the page before saving.'
     if (error.status === 409)
       return 'This change conflicts with saved data or the collection limit. Review your entries and try again.'
     if (error.status === 413)
