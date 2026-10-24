@@ -50,6 +50,7 @@ function PrivacyForm({ initial, slug }: { initial: Privacy; slug: string }) {
   const [message, setMessage] = useState('')
   const [validation, setValidation] = useState('')
   const mutation = useOwnerMutation(async (patch: Partial<Privacy>, token) => {
+    if (!saved.__etag) throw new ApiError(428, 'revision_missing')
     // The validator belongs to the original displayed draft, not a preflight GET.
     return versionedRequest<Privacy>(
       `${ownerPath}/profile/privacy`,
