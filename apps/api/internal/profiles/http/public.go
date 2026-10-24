@@ -20,7 +20,7 @@ func RegisterPublishingRoutes(r chi.Router, s *profiles.Service, p *profiles.Pub
 		r.Get("/profiles/{slug}/photo", h.publicPhoto)
 	})
 	r.Group(func(r chi.Router) {
-		r.Use(auth.Middleware(v))
+		r.Use(noStore, auth.Middleware(v))
 		r.Get("/users/me/profile/privacy", h.privacy)
 		r.Patch("/users/me/profile/privacy", h.updatePrivacy)
 		r.Get("/users/me/profile/photo", h.ownerPhoto)
@@ -64,7 +64,8 @@ func (h *Handler) privacy(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	write(w, 200, p)
+	w.Header().Set("ETag", resourceETag("privacy",p.Revision))
+ write(w, 200, p)
 }
 func (h *Handler) updatePrivacy(w http.ResponseWriter, r *http.Request) {
 	var p profiles.PrivacyPatch
@@ -81,12 +82,16 @@ func (h *Handler) updatePrivacy(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	out, err := h.publication.UpdatePrivacy(r.Context(), u, p)
+	expected, conditionalErr := parseExpectedRevision(r,"privacy")
+ if conditionalErr == errInvalidPrecondition {fail(w,profiles.ErrInvalid);return}
+ var out profiles.Privacy
+ if conditionalErr == errMissingPrecondition {out,err = h.publication.UpdatePrivacy(r.Context(),u,p)} else {out,err = h.publication.UpdatePrivacyConditional(r.Context(),u,p,expected)}
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	write(w, 200, out)
+	w.Header().Set("ETag", resourceETag("privacy",out.Revision))
+ write(w, 200, out)
 }
 func (h *Handler) uploadPhoto(w http.ResponseWriter, r *http.Request) {
 	kind, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
