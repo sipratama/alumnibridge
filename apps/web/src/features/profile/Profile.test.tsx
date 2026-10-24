@@ -121,6 +121,14 @@ beforeEach(() => {
         return response({ error: 'conflict' }, rejectStatus)
       if (path === '/users/me/profile/photo')
         return response({ error: 'not_found' }, 404)
+      if (path === '/users/me/profile/discovery')
+        return response({
+          directory_discoverable: false,
+          directory_consented_at: null,
+          eligible: false,
+          effective_discoverable: false,
+          memberships: [],
+        })
       if (path === '/users/me/profile/privacy') {
         if (method === 'PATCH') savedPrivacy = { ...savedPrivacy, ...body }
         return response(savedPrivacy)

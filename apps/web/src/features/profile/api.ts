@@ -83,6 +83,7 @@ export function useOwnerMutation<T, V>(
     onSuccess: async () => {
       // Public data is always re-read; never seed it with the owner's projection.
       client.removeQueries({ queryKey: publicKey })
+      client.removeQueries({ queryKey: ['directory'] })
       await Promise.all([
         client.invalidateQueries({ queryKey: ['professional', user?.id] }),
         client.invalidateQueries({ queryKey: ['auth', 'me'] }),
