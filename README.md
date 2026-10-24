@@ -2,7 +2,7 @@
 
 AlumniBridge is an open-source professional network for university students and alumni. The first community is Mathematics Education at UHAMKA, Indonesia. The design allows additional universities and study programs later.
 
-The current milestone includes a Go API, a React web app, PostgreSQL, and a dedicated local Keycloak realm for sign-in and student/alumni onboarding. The backend also supports owner profile management, explicitly public profiles, privacy controls and controlled photo delivery. The professional profile UI is implemented; the public alumni directory remains future work.
+The current milestone includes a Go API, a React web app, PostgreSQL, and a dedicated local Keycloak realm for sign-in and student/alumni onboarding. The backend also supports owner profile management, explicitly public profiles, privacy controls and controlled photo delivery. The public Alumni Directory is available at `/alumni`; verified alumni manage separate discovery consent under `/settings/privacy`.
 
 ## Requirements
 
@@ -71,7 +71,7 @@ The web app is at `http://localhost:5173`; Keycloak is at `http://localhost:1808
 
 ## Directory backend configuration
 
-Milestone 4 Phase B adds anonymous `GET /api/v1/directory` and authenticated owner `GET/PATCH /api/v1/users/me/profile/discovery`. There is no Directory UI yet. Existing PUBLIC profiles are not listed until a verified alumni owner explicitly opts in. Academic filters require separate membership consent; onboarding cannot grant verification.
+Milestone 4 Phase B adds anonymous `GET /api/v1/directory` and authenticated owner `GET/PATCH /api/v1/users/me/profile/discovery`. Phase D adds an anonymous `/alumni` page with search, filters and cursor navigation, plus authenticated discovery and per-membership academic disclosure controls at `/settings/privacy`. Existing PUBLIC profiles are not listed until a verified alumni owner explicitly opts in. Academic filters require separate membership consent; onboarding cannot grant verification. The UI accepts exact public institution/program reference slugs because no public reference catalog endpoint exists. See [Phase D frontend implementation](docs/milestone-4-phase-d-frontend.md).
 
 `DIRECTORY_CURSOR_KEY` is mandatory for native API startup: canonical base64 of 32 random bytes. On macOS/Linux use `export DIRECTORY_CURSOR_KEY="$(openssl rand -base64 32)"`; Windows generation is included above. Store the generated value in your environment/secret manager if cursors should survive restarts. Key rotation invalidates outstanding 15-minute cursors safely. Compose and `.env.example` contain an explicitly development-only fallback; replace it for shared deployments. Never print real keys or cursor tokens in logs. See [Phase B backend and isolated testing](docs/milestone-4-phase-b-backend.md).
 

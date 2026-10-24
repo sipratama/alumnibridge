@@ -1,9 +1,9 @@
 # Milestone 4 — Alumni Directory & Discovery design
 
 Date: 2026-10-24 (Asia/Jakarta). Base: `1537c8899fa8fff51ecc7fac01db1d1f8814526c`.
-Status: **Approved Phase A design; backend foundation implemented in Phase B, UI not implemented**.
+Status: **Approved Phase A design; Phases B–D implemented on the feature branch; Phase E final review pending**.
 
-See [Phase B implementation and test evidence](milestone-4-phase-b-backend.md). Membership-first locking refines the preliminary order below to coordinate with the database revocation safeguard.
+See [Phase B implementation](milestone-4-phase-b-backend.md), [Phase C hardening](milestone-4-phase-c-hardening.md) and [Phase D frontend evidence](milestone-4-phase-d-frontend.md). Membership-first locking refines the preliminary order below to coordinate with the database revocation safeguard.
 
 Canonical policy: [ADR 0002](decisions/0002-directory-discoverability.md). Execution and repository evidence: [directory plan](milestone-4-directory-plan.md). Product requirements: [PRD](prd.md).
 
@@ -284,12 +284,12 @@ Extend the existing [.github/workflows/ci.yml](../.github/workflows/ci.yml): bac
 | D | Public React directory, owner consent controls, filters/cards/pagination and accessible cache-safe navigation | #17; #18 regressions |
 | E | Real browser/regression/platform/accessibility testing, final documentation/review and prepare PR after approval | #19; acceptance evidence for #14–#18 |
 
-Phase B remediation was reviewed and approved. Phase C hardening is implemented locally and awaits maintainer review; Phase D/E remain unstarted. Remaining product/operational follow-ups are bounded:
+Phase B remediation and Phase C final review are recorded. Phase D frontend is implemented locally and awaits maintainer review; Phase E remains pending. Remaining product/operational follow-ups are bounded:
 
 1. The maintainer approved the ADR's verified-only policy, default-false opt-in and per-membership academic flags. The chosen design preserves current PRD eligibility; expanding to student/pending discovery would require a policy revision before coding.
-2. Approve consent copy and whether clearing academic choices on withdrawal is acceptable UX. Current design favors explicit fresh consent over automatic restoration. Legal language/retention/audit requirements remain launch decisions.
+2. Review the implemented owner consent copy and academic-choice withdrawal UX. The design requires explicit fresh consent over automatic restoration. Legal language/retention/audit requirements remain launch decisions.
 3. No verification operator UI exists yet, so real directory inventory can legitimately be empty. Decide future authorized reviewer operations in deferred membership work, not by weakening directory eligibility.
 4. Validate representative Indonesian/Unicode names and company/job-title prefix expectations. Accent folding, substring/fuzzy matching and relevance/name sort are deferred, not silently substituted.
-5. Confirm per-instance limiter settings and search timeout budgets with measured fixtures in Phase C; global enforcement, deployment topology and privacy telemetry review are launch conditions.
+5. Phase C measured per-instance limiter settings and search timeout budgets with disposable fixtures; global enforcement, deployment topology and privacy telemetry review are launch conditions.
 6. Keep #11 open. Approve a separate atomic precondition/compatibility design before public multi-session use; do not smuggle a new revision mechanism into this planning task.
 7. Maintainer must evaluate/enable required branch protection under #10. Windows/Podman, real assistive technology, browser CI and production storage/restore work remain explicit verification/release gates.
