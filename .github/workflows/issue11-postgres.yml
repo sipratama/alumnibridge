@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   postgres:
-    name: PostgreSQL 17 / migration 000007 / concurrency
+    name: PostgreSQL 17 / all migrations / concurrency
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -47,7 +47,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y postgresql-client
-      - name: Apply all migrations through 000007
+      - name: Apply all current migrations
         run: |
           set -euo pipefail
           for file in infrastructure/migrations/*.up.sql; do psql -v ON_ERROR_STOP=1 -f "$file"; done

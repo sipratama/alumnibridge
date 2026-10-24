@@ -1,6 +1,6 @@
 # Issue #11 — Implementation phases and release gates
 
-**Status:** Implementation and local security verification in progress. Mandatory conditional writes are implemented for the profile, privacy/discovery, and existing experience/education items. The remaining mutation boundaries and release conditions are recorded in [the remediation review](issue-11-remediation-review.md). Issue #11 remains open and production is blocked.
+**Status:** Local implementation and security verification in progress. Mandatory conditional writes cover profile, privacy/discovery, photo pointer actions, and existing experience/education items. Skills and history POST use owner-serialized set/append semantics without collection validators. Final release conditions are recorded in [the remediation review](issue-11-remediation-review.md). Issue #11 remains open and production is blocked.
 **Approved design:** [ADR 0003 proposal](decisions/0003-atomic-optimistic-concurrency-proposal.md) (maintainer approved 2026-10-24).
 **Branch:** `security/issue-11-optimistic-concurrency` from design commit `cba2ca0`.
 
@@ -14,7 +14,7 @@ Committed `000007_resource_revisions.up/down.sql`:
 - Per-item triggers bump revisions for updated history rows.
 - Add `revision_migration_integration_test.go` covering counter boundaries, no-op, PRIVATE withdrawal, per-item updates and rejected SQL rollback.
 
-**Implemented after Phase A:** consent-only affiliation updates bump `privacy_revision` inside the `UpdateDiscovery` transaction. Migration 000008 invalidates the shared revision for membership lifecycle changes and serializes simultaneous last-membership revocations. Onboarding display-name changes invalidate profile content revisions. The remaining collection/photo boundaries are classified in the remediation review.
+**Implemented after Phase A:** consent-only affiliation updates bump `privacy_revision` inside the `UpdateDiscovery` transaction. Migration 000008 invalidates the shared revision for membership lifecycle changes and serializes simultaneous last-membership revocations. Onboarding display-name changes invalidate profile content revisions. Photo actions require the profile-content validator; skills and history append have no collection validator, as classified in the remediation review.
 
 **Phase A acceptance:** run migration up/down/up against disposable PostgreSQL 17; run all integration tests with schema 000007, isolation/trigger ordering checks and two-connection races. Nothing is reported PASS until actually executed.
 

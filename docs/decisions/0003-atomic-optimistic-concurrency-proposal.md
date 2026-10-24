@@ -1,10 +1,12 @@
 # Issue #11 — Atomic Optimistic Concurrency: Design Proposal
 
-**Status:** Proposed for maintainer review — **NOT approved or implemented**
+**Status:** Approved design, implemented on the Issue #11 security branch; final acceptance and production release remain pending.
 **Date:** 2026-10-24
 **Base:** `master` at `8424ce5628bfcce1bca4371e9548e9f713bb7540`
 **Tracking:** [#11](https://github.com/sipratama/alumnibridge/issues/11)
-**Scope:** Owner profile, publication/privacy, discovery consent, experience/education, and related owner-editable collections. Do not start Milestone 5 implementation until this design receives a decision.
+**Scope:** Owner profile, publication/privacy, discovery consent, experience/education, and related owner-editable collections. Milestone 5 remains outside this work.
+
+**Implementation note (2026-10-25):** Sections below preserve the original proposal and its alternatives. The final resource-boundary decision is recorded in the [remediation review](../issue-11-remediation-review.md): photo replacement/deletion requires the profile-content ETag; skill add/exact-link deletion and history append use owner-serialized collection operations without collection validators. Existing-item PATCH/DELETE requires per-item ETags. Migrations 000007–000008 implement revisions and trusted membership invalidation; no additional schema change was needed. This status does not supersede the remaining release gates.
 
 ## 1. Problem and current code evidence
 
