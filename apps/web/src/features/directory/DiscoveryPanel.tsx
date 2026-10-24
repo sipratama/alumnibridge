@@ -16,22 +16,25 @@ function choices(settings: DiscoverySettings): AcademicConsent[] {
 
 export function DiscoveryPanel({ visibility }: { visibility: 'public' | 'private' }) {
   const query = useOwnerQuery<DiscoverySettings>('profile/discovery')
+  const [reloadKey, setReloadKey] = useState(0)
   if (query.isPending) return <Loading label="Loading directory discovery settings…" />
   if (query.error && (!query.data || (query.error instanceof ApiError && query.error.status === 401))) return <LoadError error={query.error} retry={() => void query.refetch()} />
-  return <>{query.error && <p className="profile-error" role="alert">Settings could not be refreshed. Your choices are preserved; retry before saving.</p>}<DiscoveryForm initial={query.data} visibility={visibility} onReload={() => void query.refetch()} /></>
+  return <>{query.error && <p className="profile-error" role="alert">Settings could not be refreshed. Your choices are preserved; retry before saving.</p>}<DiscoveryForm key={reloadKey} initial={query.data} visibility={visibility} onReload={() => { void query.refetch().then((result) => { if (result.data && !result.error) setReloadKey((key) => key + 1) }) }} /></>
 }
 
 function DiscoveryForm({ initial, visibility, onReload }: { initial: DiscoverySettings; visibility: 'public' | 'private'; onReload: () => void }) {
   const { getToken, user } = useAuth()
   const client = useQueryClient()
   const [draft, setDraft] = useState({ origin: initial, enabled: initial.directory_discoverable, affiliations: choices(initial) })
-  const active = draft.origin === initial ? draft : { origin: initial, enabled: initial.directory_discoverable, affiliations: choices(initial) }
+  // Keep the snapshot, including its original ETag, until an explicit reload
+  // or a successful save. Background refetch must never silently rewrite a draft.
+  const active = draft
   const { enabled, affiliations } = active
-  const saved = initial
+  const saved = draft.origin
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>(null)
   const [message, setMessage] = useState('')
-  const canOptIn = initial.eligible && visibility === 'public'
+  const canOptIn = saved.eligible && visibility === 'public'
   function setFlag(id: string, flag: keyof Omit<AcademicConsent, 'membership_id'>, checked: boolean) {
     setDraft({ ...active, affiliations: affiliations.map((item) => item.membership_id === id ? {
       ...item, [flag]: checked,
@@ -56,6 +59,7 @@ function DiscoveryForm({ initial, visibility, onReload }: { initial: DiscoverySe
       // immediately before saving an older draft.
       if (!saved.__etag) throw new ApiError(428, 'revision_missing')
       const result = await updateDiscovery(getToken, patch, saved.__etag)
+      setDraft({ origin: result, enabled: result.directory_discoverable, affiliations: choices(result) })
       client.setQueryData(['professional', user?.id, 'profile/discovery'], result)
       setMessage(result.effective_discoverable ? 'Your profile can now appear in Alumni Directory.' : 'Directory discovery is off. Your academic choices are no longer published here.')
       client.removeQueries({ queryKey: ['directory'] })
@@ -77,14 +81,14 @@ function DiscoveryForm({ initial, visibility, onReload }: { initial: DiscoverySe
     <h2 id="discovery-heading">Alumni Directory discovery</h2>
     <p className="muted">A public profile link and an Alumni Directory listing are separate choices. Only a public, visible profile with a trusted verified alumni membership can be listed.</p>
     <p className="discovery-status" role="status"><strong>Status:</strong> {saved.effective_discoverable ? 'Listed when public search matches' : 'Not listed in Alumni Directory'}</p>
-    {!initial.eligible && <p className="discovery-ineligible">{visibility === 'private' ? 'Publish your profile first if you want to request listing. Publication alone does not turn on discovery.' : 'Directory listing requires a verified alumni membership and a visible public profile. Student and pending alumni memberships are not eligible.'}</p>}
+    {!saved.eligible && <p className="discovery-ineligible">{visibility === 'private' ? 'Publish your profile first if you want to request listing. Publication alone does not turn on discovery.' : 'Directory listing requires a verified alumni membership and a visible public profile. Student and pending alumni memberships are not eligible.'}</p>}
     <form onSubmit={(event) => void save(event)}>
       <fieldset disabled={busy} className="form-fieldset">
         <label className="privacy-choice discovery-choice"><span><strong>Include my profile in Alumni Directory</strong><small>Explicit opt-in. You can withdraw this choice at any time.</small></span><input type="checkbox" checked={enabled} disabled={!canOptIn && !enabled} onChange={(event) => { setDraft({ ...active, enabled: event.target.checked }) }} /></label>
         <h3>Academic details in Directory</h3>
         <p className="muted">Choose what to publish for each verified alumni membership. These choices do not change professional field visibility. Institution is required before study program or graduation year.</p>
-        {initial.memberships.length === 0 ? <p>No verified alumni memberships are available for academic disclosure.</p> :
-          initial.memberships.map((membership) => {
+        {saved.memberships.length === 0 ? <p>No verified alumni memberships are available for academic disclosure.</p> :
+          saved.memberships.map((membership) => {
             const current = affiliations.find((item) => item.membership_id === membership.membership_id)
             if (!current) return null
             return <fieldset className="discovery-membership" key={membership.membership_id} disabled={!enabled || busy}>
