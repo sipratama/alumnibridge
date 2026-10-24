@@ -17,8 +17,8 @@ function choices(settings: DiscoverySettings): AcademicConsent[] {
 export function DiscoveryPanel({ visibility }: { visibility: 'public' | 'private' }) {
   const query = useOwnerQuery<DiscoverySettings>('profile/discovery')
   if (query.isPending) return <Loading label="Loading directory discovery settings…" />
-  if (query.error) return <LoadError error={query.error} retry={() => void query.refetch()} />
-  return <DiscoveryForm initial={query.data} visibility={visibility} onReload={() => void query.refetch()} />
+  if (query.error && (!query.data || (query.error instanceof ApiError && query.error.status === 401))) return <LoadError error={query.error} retry={() => void query.refetch()} />
+  return <>{query.error && <p className="profile-error" role="alert">Settings could not be refreshed. Your choices are preserved; retry before saving.</p>}<DiscoveryForm initial={query.data} visibility={visibility} onReload={() => void query.refetch()} /></>
 }
 
 function DiscoveryForm({ initial, visibility, onReload }: { initial: DiscoverySettings; visibility: 'public' | 'private'; onReload: () => void }) {

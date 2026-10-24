@@ -2,6 +2,8 @@
 
 Date: 2026-10-24. Branch: `feature/milestone-4-alumni-directory`. Base commit: `9c90cfec52dd37b7cf5bcaba08e5d08c1257540b`.
 
+Phase D final review remediation adds masking while Directory data is revalidated, preserves consent drafts across transient GET failures, and uses one skill name per line so commas remain valid name content. Narrow headers wrap at 320 px; Directory contrast and accessible profile-link names were corrected. See the [final Phase D review](reviews/milestone-4-phase-d-review.md) for current test/CI evidence and remaining conditions. The original implementation evidence below remains historical.
+
 ## Routes and components
 
 | Route | Access | Purpose |

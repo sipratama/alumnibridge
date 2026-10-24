@@ -12,7 +12,7 @@
 .directory-filter-title h2 { color: #172d39; font-size: 19px; margin: 0; letter-spacing: -.025em; }
 .directory-filter-panel p { color: #647872; font-size: 12px; line-height: 1.6; margin: -8px 0 0; }
 .directory-filter-panel label { display: grid; gap: 7px; color: #35545a; font-size: 13px; font-weight: 700; }
-.directory-filter-panel input, .directory-filter-panel select { width: 100%; min-height: 43px; border: 1px solid #cadbd3; border-radius: 8px; padding: 9px 11px; background: white; color: #172d39; font-weight: 400; }
+.directory-filter-panel input, .directory-filter-panel textarea, .directory-filter-panel select { width: 100%; min-height: 43px; border: 1px solid #cadbd3; border-radius: 8px; padding: 9px 11px; background: white; color: #172d39; font-weight: 400; }
 .directory-filter-panel input:disabled { background: #f0f3f1; color: #71827d; }
 .directory-filter-divider { padding-top: 12px; border-top: 1px solid #e4ebe7; font-size: 13px; font-weight: 750; }
 .directory-filter-panel .directory-form-error { color: #a7433e; font-size: 13px; margin: 0; }
@@ -74,3 +74,11 @@
   .directory-state { padding: 25px; }
   .directory-pagination { gap: 9px; }
 }
+
+.directory-filter-panel textarea { resize: vertical; }
+@media (max-width: 360px) {
+  .directory-header > .container { flex-wrap: wrap; padding-block: 12px; row-gap: 10px; }
+  .directory-header nav { width: 100%; justify-content: flex-end; }
+}
+.directory-page .section-kicker { color: #176f63; }
+.directory-page-note { color: #52685e; }

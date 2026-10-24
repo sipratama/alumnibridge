@@ -1,5 +1,5 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DirectoryPage } from './DirectoryPage'
@@ -26,6 +26,31 @@ beforeEach(() => {
 afterEach(() => { cleanup(); clients.splice(0).forEach((client) => client.clear()); vi.unstubAllGlobals() })
 
 describe('directory URL and API contract', () => {
+  it.each([200, 429, 503, 0])('masks downloaded cards during focus revalidation ending with %i', async (status) => {
+    let finish: (() => void) | undefined
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(response({ items: [member], next_cursor: null })).mockImplementationOnce(() => new Promise<Response>((resolve, reject) => {
+      finish = () => status === 0 ? reject(new TypeError('offline')) : resolve(response(status === 200 ? { items: [], next_cursor: null } : { error: 'directory_overloaded' }, status))
+    })))
+    mount()
+    await screen.findByRole('heading', { name: 'Siti Alumni' })
+    act(() => { focusManager.setFocused(false); focusManager.setFocused(true) })
+    await waitFor(() => expect(finish).toBeDefined())
+    expect(screen.queryByRole('heading', { name: 'Siti Alumni' })).not.toBeInTheDocument()
+    expect(screen.getByText('Checking published profiles…')).toBeInTheDocument()
+    await act(async () => finish?.())
+    if (status === 200) await screen.findByText('No profiles match these filters')
+    else await screen.findByRole('alert')
+    expect(screen.queryByRole('heading', { name: 'Siti Alumni' })).not.toBeInTheDocument()
+    expect(fetch).toHaveBeenCalledTimes(2)
+    focusManager.setFocused(undefined)
+  })
+  it('preserves commas inside skill names when restoring and submitting URL filters', async () => {
+    mount('?skills=Design%2C+research&skills=Teaching')
+    await screen.findByRole('heading', { name: 'Siti Alumni' })
+    expect(screen.getByLabelText('Skill names, one per line')).toHaveValue('Design, research\nTeaching')
+    fireEvent.click(screen.getByRole('button', { name: /Search alumni/i }))
+    expect(new URLSearchParams(screen.getByTestId('location').textContent ?? '').getAll('skills')).toEqual(['Design, research', 'Teaching'])
+  })
   it('serializes repeated skills, restores shareable filters, and rejects invalid or repeated parameters', () => {
     const query = serializeFilters({ ...defaultFilters, institution: 'uhamka', study_program: 'mathematics-education', skills: ['Teaching', 'Research'], limit: 50 })
     const params = new URLSearchParams(query)
@@ -47,7 +72,7 @@ describe('directory URL and API contract', () => {
     expect(screen.getByText('Verified alumni')).toBeInTheDocument()
     expect(screen.getByText('Mathematics educator')).toBeInTheDocument()
     expect(screen.getByText('Teaching')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: "View Siti Alumni's profile" })).toHaveAttribute('href', '/in/siti-alumni')
+    expect(screen.getByRole('link', { name: "View profile for Siti Alumni" })).toHaveAttribute('href', '/in/siti-alumni')
     expect(screen.queryByText('membership_id')).not.toBeInTheDocument()
     expect(vi.mocked(fetch).mock.calls[0][1]).toMatchObject({ cache: 'no-store' })
     expect(vi.mocked(fetch).mock.calls[0][1]?.headers).not.toHaveProperty('Authorization')

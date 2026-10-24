@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DiscoveryPanel } from './DiscoveryPanel'
@@ -42,6 +42,31 @@ beforeEach(() => {
 afterEach(() => { cleanup(); client?.clear(); vi.unstubAllGlobals() })
 
 describe('owner discovery consent', () => {
+  it('retains unsaved academic choices after a transient background GET failure', async () => {
+    mount()
+    fireEvent.click(await screen.findByRole('checkbox', { name: /Include my profile/ }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Show institution' }))
+    vi.mocked(fetch).mockRejectedValueOnce(new TypeError('offline'))
+    await act(async () => { await client.invalidateQueries({ queryKey: ['professional'] }) })
+    expect(await screen.findByRole('alert')).toHaveTextContent('choices are preserved')
+    expect(screen.getByRole('checkbox', { name: 'Show institution' })).toBeChecked()
+  })
+  it('keeps a successful PATCH result visible when its follow-up GET fails', async () => {
+    const original = fetch
+    let patchSucceeded = false
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (patchSucceeded && init?.method !== 'PATCH') throw new TypeError('offline')
+      const result = await original(url, init)
+      if (init?.method === 'PATCH') patchSucceeded = true
+      return result
+    }))
+    mount()
+    fireEvent.click(await screen.findByRole('checkbox', { name: /Include my profile/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save discovery settings' }))
+    expect(await screen.findByText(/can now appear/)).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent('choices are preserved')
+    expect(screen.getByRole('checkbox', { name: /Include my profile/ })).toBeChecked()
+  })
   it('keeps academic disclosure off until explicit owner opt-in and enforces institution dependency', async () => {
     mount()
     const toggle = await screen.findByRole('checkbox', { name: /Include my profile/ })
