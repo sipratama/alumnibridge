@@ -119,6 +119,8 @@ func fail(w http.ResponseWriter, err error) {
 		status, code = 400, "invalid_input"
 	case errors.Is(err, profiles.ErrNotFound):
 		status, code = 404, "not_found"
+	case errors.Is(err, profiles.ErrStale):
+        status, code = http.StatusPreconditionFailed, "stale_revision"
 	case errors.Is(err, profiles.ErrConflict):
 		status, code = 409, "conflict"
 	}
