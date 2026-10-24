@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Button } from '@/components/ui/button'
-import { ApiError, request } from '@/shared/api/client'
+import { ApiError, versionedRequest } from '@/shared/api/client'
 import { Dialog, Feedback, Field } from './components'
 import {
   json,
@@ -23,7 +23,7 @@ export function ProfileEditor({
   onSaved: () => void
 }) {
   const [baseline] = useState<ProfileInput>(() => {
-    const { completeness: _, ...values } = profile
+    const { completeness: _, __etag: _etag, ...values } = profile
     return values
   })
   const form = useForm<ProfileInput>({
@@ -33,17 +33,10 @@ export function ProfileEditor({
   const dirtyFields = form.formState.dirtyFields
   const mutation = useOwnerMutation(
     async (values: Partial<ProfileInput>, token) => {
-      const latest = await request<Profile>(`${ownerPath}/profile`, token)
-      if (
-        (Object.keys(values) as (keyof ProfileInput)[]).some(
-          (key) => latest[key] !== baseline[key],
-        )
-      )
-        throw new ApiError(409, 'profile_changed')
-      return request<Profile>(
-        `${ownerPath}/profile`,
-        token,
-        json('PATCH', values),
+      if (!profile.__etag) throw new ApiError(428, 'revision_missing')
+      return versionedRequest<Profile>(
+        `${ownerPath}/profile`, token,
+        { ...json('PATCH', values), headers: { 'If-Match': profile.__etag } },
       )
     },
   )
@@ -137,7 +130,7 @@ export function ProfileEditor({
           </div>
         </fieldset>
         {mutation.error instanceof ApiError &&
-        mutation.error.code === 'profile_changed' ? (
+        (mutation.error.status === 412 || mutation.error.code === 'profile_changed') ? (
           <p role="alert" className="profile-error">
             Your profile changed in another session. Your entries are preserved
             here. Close and reload the profile before trying again.
