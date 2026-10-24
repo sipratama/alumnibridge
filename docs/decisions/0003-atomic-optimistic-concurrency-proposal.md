@@ -1,9 +1,9 @@
 # Issue #11 — Atomic Optimistic Concurrency: Design Proposal
 
-**Status:** Proposed for maintainer review — **NOT approved or implemented**  
-**Date:** 2026-10-24  
-**Base:** `master` at `8424ce5628bfcce1bca4371e9548e9f713bb7540`  
-**Tracking:** [#11](https://github.com/sipratama/alumnibridge/issues/11)  
+**Status:** Proposed for maintainer review — **NOT approved or implemented**
+**Date:** 2026-10-24
+**Base:** `master` at `8424ce5628bfcce1bca4371e9548e9f713bb7540`
+**Tracking:** [#11](https://github.com/sipratama/alumnibridge/issues/11)
 **Scope:** Owner profile, publication/privacy, discovery consent, experience/education, and related owner-editable collections. Do not start Milestone 5 implementation until this design receives a decision.
 
 ## 1. Problem and current code evidence
