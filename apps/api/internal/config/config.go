@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net"
@@ -12,18 +13,19 @@ import (
 )
 
 type Config struct {
-	StorageEndpoint  string
-	StorageAccessKey string
-	StorageSecretKey string
-	StorageBucket    string
-	StorageSecure    bool
-	Port             string
-	DatabaseURL      string
-	OIDCIssuer       string
-	OIDCAudience     string
-	OIDCClientID     string
-	OIDCJWKSURL      string
-	ShutdownTimeout  time.Duration
+	DirectoryCursorKey []byte
+	StorageEndpoint    string
+	StorageAccessKey   string
+	StorageSecretKey   string
+	StorageBucket      string
+	StorageSecure      bool
+	Port               string
+	DatabaseURL        string
+	OIDCIssuer         string
+	OIDCAudience       string
+	OIDCClientID       string
+	OIDCJWKSURL        string
+	ShutdownTimeout    time.Duration
 }
 
 func Load() (Config, error) {
@@ -51,8 +53,12 @@ func Load() (Config, error) {
 	if err != nil || storageEndpoint == "" || storageAccess == "" || storageSecret == "" || storageBucket == "" {
 		return Config{}, errors.New("object storage configuration is required")
 	}
+	cursorKey, keyErr := base64.StdEncoding.Strict().DecodeString(os.Getenv("DIRECTORY_CURSOR_KEY"))
+	if keyErr != nil || len(cursorKey) != 32 || base64.StdEncoding.EncodeToString(cursorKey) != os.Getenv("DIRECTORY_CURSOR_KEY") {
+		return Config{}, errors.New("DIRECTORY_CURSOR_KEY must be canonical base64 encoding of 32 random bytes")
+	}
 	jwksURL := getenv("OIDC_JWKS_URL", issuer+"/protocol/openid-connect/certs")
-	return Config{StorageEndpoint: storageEndpoint, StorageAccessKey: storageAccess, StorageSecretKey: storageSecret, StorageBucket: storageBucket, StorageSecure: storageSecure, Port: port, DatabaseURL: url, OIDCIssuer: issuer, OIDCAudience: audience, OIDCClientID: clientID, OIDCJWKSURL: jwksURL, ShutdownTimeout: 10 * time.Second}, nil
+	return Config{DirectoryCursorKey: cursorKey, StorageEndpoint: storageEndpoint, StorageAccessKey: storageAccess, StorageSecretKey: storageSecret, StorageBucket: storageBucket, StorageSecure: storageSecure, Port: port, DatabaseURL: url, OIDCIssuer: issuer, OIDCAudience: audience, OIDCClientID: clientID, OIDCJWKSURL: jwksURL, ShutdownTimeout: 10 * time.Second}, nil
 }
 
 func (c Config) Address() string { return net.JoinHostPort("", c.Port) }

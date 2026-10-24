@@ -14,6 +14,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sipratama/alumnibridge/apps/api/internal/auth"
 	"github.com/sipratama/alumnibridge/apps/api/internal/config"
+	"github.com/sipratama/alumnibridge/apps/api/internal/directory"
+	directoryhttp "github.com/sipratama/alumnibridge/apps/api/internal/directory/http"
+	directorypostgres "github.com/sipratama/alumnibridge/apps/api/internal/directory/postgres"
 	"github.com/sipratama/alumnibridge/apps/api/internal/httpserver"
 	"github.com/sipratama/alumnibridge/apps/api/internal/identity"
 	identityhttp "github.com/sipratama/alumnibridge/apps/api/internal/identity/http"
@@ -72,10 +75,19 @@ func main() {
 			}
 		}
 	}()
+	cursor, err := directory.NewCursor(cfg.DirectoryCursorKey)
+	if err != nil {
+		logger.Error("directory cursor initialization failed")
+		os.Exit(1)
+	}
+	directoryService := directory.New(directorypostgres.New(db), cursor)
+	discovery := profiles.NewDiscovery(profileStore)
 	service := identity.NewService(identitypostgres.New(db))
 	router := httpserver.New(db, logger)
 	router.Route("/api/v1", func(r chi.Router) {
 		identityhttp.RegisterRoutes(r, service, verifier)
+		directoryhttp.RegisterRoutes(r, directoryService)
+		profileshttp.RegisterDiscoveryRoutes(r, profileService, discovery, service, verifier)
 		profileshttp.RegisterRoutes(r, profileService, service, verifier)
 		profileshttp.RegisterPublishingRoutes(r, profileService, publication, service, verifier)
 	})

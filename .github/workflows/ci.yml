@@ -72,6 +72,8 @@ jobs:
           --health-timeout 3s
           --health-retries 15
     env:
+      # Isolated CI fixture only; never use this cursor key in a shared deployment.
+      DIRECTORY_CURSOR_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
       DATABASE_URL: postgres://alumnibridge:ci_test_only@127.0.0.1:5432/alumnibridge_ci?sslmode=disable
       TEST_DATABASE_URL: postgres://alumnibridge:ci_test_only@127.0.0.1:5432/alumnibridge_ci?sslmode=disable
       TEST_OBJECT_STORAGE_ENDPOINT: 127.0.0.1:19000

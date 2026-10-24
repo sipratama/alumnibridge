@@ -4,6 +4,8 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     environment:
+      # Local development fallback only; replace with a generated random key for shared deployment.
+      DIRECTORY_CURSOR_KEY: ${DIRECTORY_CURSOR_KEY:-L1vAgBrfwBBurWKc4D9fp3LXZEnC9h5Bq/HL7nVWLS8=}
       API_PORT: 8080
       DATABASE_URL: postgres://${POSTGRES_USER:-alumnibridge}:${POSTGRES_PASSWORD:-local_dev_only_change_me}@postgres:5432/${POSTGRES_DB:-alumnibridge}?sslmode=disable
       OIDC_ISSUER: http://localhost:${KEYCLOAK_PORT:-18085}/realms/alumnibridge
