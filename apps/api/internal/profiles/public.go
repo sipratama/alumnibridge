@@ -50,6 +50,7 @@ type Privacy struct {
 	ShowEducations      bool   `json:"show_educations"`
 	ShowSkills          bool   `json:"show_skills"`
 	ShowPhoto           bool   `json:"show_photo"`
+	Revision            int64  `json:"-"` // owner ETag only; never in JSON
 }
 
 // Visibility is mandatory even for a partial update of optional publication flags.
@@ -63,6 +64,12 @@ type PrivacyPatch struct {
 	ShowEducations      *bool  `json:"show_educations"`
 	ShowSkills          *bool  `json:"show_skills"`
 	ShowPhoto           *bool  `json:"show_photo"`
+}
+// ConditionalPrivacyStore is the opt-in atomic write contract while legacy
+// clients migrate to mandatory If-Match. The HTTP route uses this only when
+// an expected revision is supplied; old clients remain a production gate.
+type ConditionalPrivacyStore interface {
+	UpdatePrivacyConditional(context.Context, uuid.UUID, PrivacyPatch, int64) (Privacy, error)
 }
 type Photo struct {
 	Key         string
@@ -114,6 +121,14 @@ func (s *PublishingService) Public(ctx context.Context, slug string) (Publicatio
 }
 func (s *PublishingService) Privacy(ctx context.Context, id uuid.UUID) (Privacy, error) {
 	return s.store.Privacy(ctx, id)
+}
+func (s *PublishingService) UpdatePrivacyConditional(ctx context.Context, id uuid.UUID, p PrivacyPatch, expected int64) (Privacy, error) {
+	if p.Visibility != "public" && p.Visibility != "private" || expected < 1 {
+		return Privacy{}, ErrInvalid
+	}
+	conditional, ok := s.store.(ConditionalPrivacyStore)
+	if !ok { return Privacy{}, ErrInvalid }
+	return conditional.UpdatePrivacyConditional(ctx, id, p, expected)
 }
 func (s *PublishingService) UpdatePrivacy(ctx context.Context, id uuid.UUID, p PrivacyPatch) (Privacy, error) {
 	if p.Visibility != "public" && p.Visibility != "private" {
