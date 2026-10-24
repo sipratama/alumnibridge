@@ -14,6 +14,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sipratama/alumnibridge/apps/api/internal/auth"
 	"github.com/sipratama/alumnibridge/apps/api/internal/config"
+	"github.com/sipratama/alumnibridge/apps/api/internal/directory"
+	directoryhttp "github.com/sipratama/alumnibridge/apps/api/internal/directory/http"
+	directorypostgres "github.com/sipratama/alumnibridge/apps/api/internal/directory/postgres"
 	"github.com/sipratama/alumnibridge/apps/api/internal/httpserver"
 	"github.com/sipratama/alumnibridge/apps/api/internal/identity"
 	identityhttp "github.com/sipratama/alumnibridge/apps/api/internal/identity/http"
@@ -38,6 +41,18 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
+	// Directory overload cannot consume every connection used by owner APIs and
+	// readiness checks. Account for both pools in the deployment connection budget.
+	searchConfig := db.Config()
+	searchConfig.MaxConns = int32(cfg.DirectoryMaxConcurrent)
+	searchConfig.MinConns = 0
+	searchConfig.ConnConfig.RuntimeParams["application_name"] = "alumnibridge-directory"
+	searchDB, err := pgxpool.NewWithConfig(context.Background(), searchConfig)
+	if err != nil {
+		logger.Error("directory database configuration error")
+		os.Exit(1)
+	}
+	defer searchDB.Close()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -72,10 +87,23 @@ func main() {
 			}
 		}
 	}()
+	cursor, err := directory.NewCursor(cfg.DirectoryCursorKey)
+	if err != nil {
+		logger.Error("directory cursor initialization failed")
+		os.Exit(1)
+	}
+	directoryService := directory.New(directorypostgres.NewWithTimeout(searchDB, cfg.DirectoryStatementTimeout), cursor)
+	discovery := profiles.NewDiscovery(profileStore)
 	service := identity.NewService(identitypostgres.New(db))
 	router := httpserver.New(db, logger)
 	router.Route("/api/v1", func(r chi.Router) {
 		identityhttp.RegisterRoutes(r, service, verifier)
+		directoryhttp.RegisterRoutesWithLimits(r, directoryService, directoryhttp.Limits{
+			RequestTimeout: cfg.DirectoryRequestTimeout, MaxConcurrent: cfg.DirectoryMaxConcurrent,
+			RatePerMinute: cfg.DirectoryRatePerMinute, Burst: cfg.DirectoryBurst,
+			MaxClients: cfg.DirectoryMaxClients, ClientTTL: cfg.DirectoryClientTTL,
+		}, logger)
+		profileshttp.RegisterDiscoveryRoutes(r, profileService, discovery, service, verifier)
 		profileshttp.RegisterRoutes(r, profileService, service, verifier)
 		profileshttp.RegisterPublishingRoutes(r, profileService, publication, service, verifier)
 	})

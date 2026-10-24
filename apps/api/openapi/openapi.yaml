@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: AlumniBridge API
-  version: 0.3.1
-  description: Identity, onboarding, and owner-only professional profile endpoints. Includes consent-based public profiles, owner privacy controls, and access-controlled photos. Public responses never contain internal identities or private contact data.
+  version: 0.4.0
+  description: Identity, onboarding, professional profiles, and privacy-safe anonymous alumni directory endpoints. Includes consent-based public profiles, owner privacy controls, and access-controlled photos. Public responses never contain internal identities or private contact data.
 servers:
   - url: http://localhost:8080
 paths:
@@ -224,7 +224,7 @@ paths:
           image/webp: {schema: {type: string, format: binary}}
       responses:
         '201': {description: Photo stored, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {photo_url: {type: string, const: /api/v1/users/me/profile/photo}}, required: [photo_url]}}}}
-        '400': {description: Malformed image, MIME/content mismatch, or invalid dimensions}
+        '400': {description: 'Malformed image, MIME/content mismatch, or invalid dimensions'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '413': {description: Image exceeds 5 MiB}
         '415': {description: Unsupported image media type}
@@ -245,7 +245,91 @@ paths:
         '200': {description: Image bytes; Cache-Control no-store and X-Content-Type-Options nosniff, content: {image/png: {schema: {type: string, format: binary}}, image/jpeg: {schema: {type: string, format: binary}}}}
         '404': {description: Photo unavailable}
         '503': {description: Photo storage unavailable}
+  /api/v1/directory:
+    get:
+      summary: Search explicitly discoverable verified alumni without authentication
+      security: []
+      description: >-
+        Requires PUBLIC, moderator VISIBLE, explicit directory opt-in and a trusted verified alumni membership.
+        Company/title/skills match only published fields. Academic filters match one verified membership with explicit field consent.
+        All filters combine with AND. Prefixes use Go Unicode simple lowercase and Unicode whitespace collapse on both query and stored values, independent of PostgreSQL locale; no accent stripping, expanding case fold, wildcard or regex language.
+        Unknown/empty parameters, duplicate scalar keys, invalid UTF-8/control text or query strings over 4096 bytes are rejected.
+        Unknown valid reference values yield no results. Canonical slug ascending in C collation; no totals, facets or offset.
+        Every page rechecks consent. Live pagination is not a cross-request snapshot; renames may cause skips/repeats.
+        Responses and errors use no-store/nosniff. Per-process source-IP token bucket defaults to 60/minute, burst 10;
+        IPv4-mapped addresses are canonicalized and forwarding headers are ignored. Proxy deployments share a peer bucket and require ingress enforcement.
+        A full bounded client table or full search admission rejects promptly with 503; no search queue.
+        Default request budget is 2 seconds with a transaction-local 1.5-second database statement timeout.
+        Rate checks precede validation; logged-in callers have no exemption. Disconnected clients may not receive the 408 response.
+      parameters:
+        - {name: query, in: query, schema: {type: string, minLength: 2, maxLength: 100}, description: Optional display-name literal prefix}
+        - {name: institution, in: query, schema: {$ref: '#/components/schemas/DirectoryReferenceSlug'}}
+        - {name: study_program, in: query, schema: {$ref: '#/components/schemas/DirectoryReferenceSlug'}, description: Requires institution; matches the same consented verified membership}
+        - {name: graduation_year, in: query, schema: {type: integer, minimum: 1950, maximum: 2100}}
+        - {name: company, in: query, schema: {type: string, minLength: 2, maxLength: 160}, description: Published current-company literal prefix}
+        - {name: job_title, in: query, schema: {type: string, minLength: 2, maxLength: 160}, description: Published current-job-title literal prefix}
+        - name: skills
+          in: query
+          style: form
+          explode: true
+          description: Repeated keys; all normalized exact names must match. Equivalent duplicates are rejected.
+          schema: {type: array, minItems: 1, maxItems: 5, uniqueItems: true, items: {type: string, minLength: 1, maxLength: 80}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 50, default: 20}}
+        - name: cursor
+          in: query
+          description: Opaque authenticated encrypted token, 15-minute expiry, bound to normalized filters and page size. Invalid/expired/tampered tokens share the same error. Contains no internal identifiers.
+          schema: {type: string, minLength: 1, maxLength: 2048, pattern: '^[A-Za-z0-9_-]+$'}
+      responses:
+        '200':
+          description: Bounded results; empty items and null next_cursor when no results
+          headers:
+            Cache-Control: {$ref: '#/components/headers/NoStore'}
+            X-Content-Type-Options: {$ref: '#/components/headers/NoSniff'}
+          content: {application/json: {schema: {$ref: '#/components/schemas/DirectoryPage'}}}
+        '400': {$ref: '#/components/responses/DirectoryInvalid'}
+        '408': {$ref: '#/components/responses/DirectoryCanceled'}
+        '429': {$ref: '#/components/responses/DirectoryRateLimited'}
+        '500': {$ref: '#/components/responses/DirectoryInternal'}
+        '503': {$ref: '#/components/responses/DirectoryUnavailable'}
+  /api/v1/users/me/profile/discovery:
+    get:
+      summary: Read the authenticated owner's discovery settings and verified membership choices
+      security: [{bearerAuth: []}]
+      description: Initializes a missing owner profile as PRIVATE with discovery disabled. Internal membership IDs are private to the owner response, never public directory fields.
+      responses:
+        '200': {$ref: '#/components/responses/DiscoverySettings'}
+        '401': {$ref: '#/components/responses/DiscoveryUnauthorized'}
+        '500': {$ref: '#/components/responses/DirectoryInternal'}
+    patch:
+      summary: Update owner-only discovery and academic publication consent atomically
+      security: [{bearerAuth: []}]
+      description: >-
+        Maximum 16 KiB JSON body. Unknown keys, duplicate object keys, nulls and duplicate membership references are rejected.
+        Omitted fields are unchanged; affiliations replaces the complete set, and [] clears it. At most 20 selections.
+        Each entry requires all three boolean flags; program/year publication requires institution publication.
+        Academic publication requires discovery consent. Opt-out clears all academic consent; contradictory publish-and-opt-out is invalid.
+        Opt-in requires current PUBLIC/VISIBLE/verified eligibility, never changes visibility, moderation or verification.
+        Existing privacy PATCH to PRIVATE clears directory/timestamp/academic consent in the same database statement transaction.
+        Revoked/deleted memberships lose academic consent; last verified-membership loss clears discovery consent; reverification does not restore it.
+        Writes are atomic and owner-scoped but retain the documented development-only last-writer-wins limitation (#11), not optimistic concurrency.
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/DiscoveryPatch'}}}
+      responses:
+        '200': {$ref: '#/components/responses/DiscoverySettings'}
+        '400': {$ref: '#/components/responses/DirectoryInvalid'}
+        '401': {$ref: '#/components/responses/DiscoveryUnauthorized'}
+        '404': {$ref: '#/components/responses/DiscoveryNotFound'}
+        '409': {$ref: '#/components/responses/DiscoveryConflict'}
+        '413': {$ref: '#/components/responses/DiscoveryTooLarge'}
+        '415': {$ref: '#/components/responses/DiscoveryMedia'}
+        '500': {$ref: '#/components/responses/DirectoryInternal'}
 components:
+  headers:
+    NoStore:
+      schema: {type: string, const: no-store}
+    NoSniff:
+      schema: {type: string, const: nosniff}
   securitySchemes:
     bearerAuth:
       type: http
@@ -253,12 +337,196 @@ components:
       bearerFormat: JWT
       description: Keycloak access token with alumnibridge-api audience
   responses:
+    DirectoryInvalid:
+      description: Invalid query, cursor or consent payload
+      headers:
+        Cache-Control: {$ref: '#/components/headers/NoStore'}
+        X-Content-Type-Options: {$ref: '#/components/headers/NoSniff'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example: {error: invalid_input}
+    DirectoryInternal:
+      description: Unexpected failure; no private database details
+      headers:
+        Cache-Control: {$ref: '#/components/headers/NoStore'}
+        X-Content-Type-Options: {$ref: '#/components/headers/NoSniff'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example: {error: internal_error}
+    DirectoryCanceled:
+      description: Client canceled the request (best-effort response; disconnected clients may receive no body)
+      headers:
+        Cache-Control: {$ref: '#/components/headers/NoStore'}
+        X-Content-Type-Options: {$ref: '#/components/headers/NoSniff'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example: {error: directory_canceled}
+    DirectoryRateLimited:
+      description: Per-source-IP burst exhausted; retry after token refill
+      headers:
+        Cache-Control: {$ref: '#/components/headers/NoStore'}
+        X-Content-Type-Options: {$ref: '#/components/headers/NoSniff'}
+        Retry-After:
+          description: Whole seconds until the next token is available (rounded up)
+          schema: {type: integer, minimum: 1}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example: {error: directory_rate_limited}
+    DirectoryUnavailable:
+      description: Admission/client-table overload, request deadline, or scoped database timeout; safe distinct error codes
+      headers:
+        Retry-After:
+          description: Present for overload; one-second retry hint, not a capacity guarantee
+          schema: {type: integer, minimum: 1}
+        Cache-Control: {$ref: '#/components/headers/NoStore'}
+        X-Content-Type-Options: {$ref: '#/components/headers/NoSniff'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          examples:
+            overload: {value: {error: directory_overloaded}}
+            deadline: {value: {error: directory_timeout}}
+            database: {value: {error: directory_database_timeout}}
+    DiscoveryUnauthorized:
+      description: Missing, invalid, expired or wrong-audience access token
+      headers:
+        Cache-Control: {$ref: '#/components/headers/NoStore'}
+        X-Content-Type-Options: {$ref: '#/components/headers/NoSniff'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example: {error: unauthorized}
+    DiscoveryNotFound:
+      description: Nonexistent or foreign membership; no distinction
+      headers:
+        Cache-Control: {$ref: '#/components/headers/NoStore'}
+        X-Content-Type-Options: {$ref: '#/components/headers/NoSniff'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example: {error: not_found}
+    DiscoveryConflict:
+      description: Owned membership not verified, or publication prerequisites not met
+      headers:
+        Cache-Control: {$ref: '#/components/headers/NoStore'}
+        X-Content-Type-Options: {$ref: '#/components/headers/NoSniff'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example: {error: conflict}
+    DiscoveryTooLarge:
+      description: JSON body exceeds 16 KiB
+      headers:
+        Cache-Control: {$ref: '#/components/headers/NoStore'}
+        X-Content-Type-Options: {$ref: '#/components/headers/NoSniff'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example: {error: request_too_large}
+    DiscoveryMedia:
+      description: Content-Type must be application/json
+      headers:
+        Cache-Control: {$ref: '#/components/headers/NoStore'}
+        X-Content-Type-Options: {$ref: '#/components/headers/NoSniff'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example: {error: unsupported_media_type}
+    DiscoverySettings:
+      description: Private owner settings; eligible is independent of opt-in and effective_discoverable includes it
+      headers:
+        Cache-Control: {$ref: '#/components/headers/NoStore'}
+        X-Content-Type-Options: {$ref: '#/components/headers/NoSniff'}
+      content: {application/json: {schema: {$ref: '#/components/schemas/Discovery'}}}
     Unauthorized:
       description: Missing or invalid access token
       content:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}
   schemas:
+    DirectoryReferenceSlug:
+      type: string
+      minLength: 1
+      maxLength: 64
+      pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+    DirectoryReference:
+      type: object
+      additionalProperties: false
+      required: [slug, name]
+      properties:
+        slug: {$ref: '#/components/schemas/DirectoryReferenceSlug'}
+        name: {type: string}
+    DirectoryAffiliation:
+      type: object
+      additionalProperties: false
+      required: [institution]
+      properties:
+        institution: {$ref: '#/components/schemas/DirectoryReference'}
+        study_program: {$ref: '#/components/schemas/DirectoryReference'}
+        graduation_year: {type: integer, minimum: 1950, maximum: 2100}
+    DirectoryEntry:
+      type: object
+      additionalProperties: false
+      required: [slug, display_name, headline, verified_alumni]
+      properties:
+        slug: {type: string, minLength: 3, maxLength: 64}
+        display_name: {type: string}
+        headline: {type: string}
+        verified_alumni: {type: boolean, const: true, description: Trusted verified alumni membership exists}
+        current_company: {type: string}
+        current_job_title: {type: string}
+        skills: {type: array, maxItems: 100, items: {type: string}}
+        affiliations: {type: array, maxItems: 20, items: {$ref: '#/components/schemas/DirectoryAffiliation'}}
+        photo_url: {type: string, description: Relative access-controlled public profile photo URL, never an object key}
+    DirectoryPage:
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items: {type: array, maxItems: 50, items: {$ref: '#/components/schemas/DirectoryEntry'}}
+        next_cursor: {type: [string, "null"], maxLength: 2048}
+    AcademicConsent:
+      type: object
+      additionalProperties: false
+      required: [membership_id, show_institution, show_study_program, show_graduation_year]
+      properties:
+        membership_id: {type: string, format: uuid, description: Authenticated owner's verified membership only}
+        show_institution: {type: boolean, default: false}
+        show_study_program: {type: boolean, default: false, description: Requires show_institution}
+        show_graduation_year: {type: boolean, default: false, description: Requires show_institution}
+    DiscoveryPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        directory_discoverable: {type: boolean, default: false}
+        affiliations: {type: array, maxItems: 20, items: {$ref: '#/components/schemas/AcademicConsent'}}
+    DiscoveryMembership:
+      type: object
+      additionalProperties: false
+      required: [membership_id, institution, study_program, graduation_year, show_institution, show_study_program, show_graduation_year]
+      properties:
+        membership_id: {type: string, format: uuid}
+        institution: {type: string}
+        study_program: {type: string}
+        graduation_year: {type: integer}
+        show_institution: {type: boolean}
+        show_study_program: {type: boolean}
+        show_graduation_year: {type: boolean}
+    Discovery:
+      type: object
+      additionalProperties: false
+      required: [directory_discoverable, directory_consented_at, eligible, effective_discoverable, memberships]
+      properties:
+        directory_discoverable: {type: boolean, default: false}
+        directory_consented_at: {type: [string, "null"], format: date-time}
+        eligible: {type: boolean, description: PUBLIC and VISIBLE with at least one trusted verified alumni membership}
+        effective_discoverable: {type: boolean, description: Eligible and directory_discoverable}
+        memberships: {type: array, items: {$ref: '#/components/schemas/DiscoveryMembership'}}
     Privacy:
       type: object
       additionalProperties: false

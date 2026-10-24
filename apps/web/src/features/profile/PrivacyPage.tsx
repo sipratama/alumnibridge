@@ -13,6 +13,7 @@ import {
   type Profile,
 } from './api'
 import { Feedback, LoadError, Loading } from './components'
+import { DiscoveryPanel } from '@/features/directory/DiscoveryPanel'
 
 export function PrivacyPage() {
   const privacy = useOwnerQuery<Privacy>('profile/privacy')
@@ -38,6 +39,7 @@ export function PrivacyPage() {
         </div>
       </div>
       <PrivacyForm initial={privacy.data} slug={profile.data.slug} />
+      <DiscoveryPanel visibility={privacy.data.visibility} />
     </>
   )
 }

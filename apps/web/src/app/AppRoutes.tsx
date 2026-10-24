@@ -23,6 +23,11 @@ const PublicProfilePage = lazy(() =>
     default: module.PublicProfilePage,
   })),
 )
+const DirectoryPage = lazy(() =>
+  import('@/features/directory/DirectoryPage').then((module) => ({
+    default: module.DirectoryPage,
+  })),
+)
 const OnboardingPage = lazy(() =>
   import('@/features/onboarding/OnboardingPage').then((module) => ({
     default: module.OnboardingPage,
@@ -44,6 +49,7 @@ export function AppRoutes() {
     >
       <Routes>
         <Route path="/" element={<App />} />
+        <Route path="/alumni" element={<DirectoryPage />} />
         <Route path="/in/:slug" element={<PublicProfilePage />} />
         <Route element={<ProtectedRoute />}>
           <Route path="/onboarding" element={<OnboardingPage />} />

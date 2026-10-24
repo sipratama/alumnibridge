@@ -2,7 +2,7 @@
 
 AlumniBridge is an open-source professional network for university students and alumni. The first community is Mathematics Education at UHAMKA, Indonesia. The design allows additional universities and study programs later.
 
-The current milestone includes a Go API, a React web app, PostgreSQL, and a dedicated local Keycloak realm for sign-in and student/alumni onboarding. The backend also supports owner profile management, explicitly public profiles, privacy controls and controlled photo delivery. The professional profile UI is implemented; the public alumni directory remains future work.
+The current milestone includes a Go API, a React web app, PostgreSQL, and a dedicated local Keycloak realm for sign-in and student/alumni onboarding. The backend also supports owner profile management, explicitly public profiles, privacy controls and controlled photo delivery. The public Alumni Directory is available at `/alumni`; verified alumni manage separate discovery consent under `/settings/privacy`.
 
 ## Requirements
 
@@ -45,6 +45,12 @@ $env:OBJECT_STORAGE_ACCESS_KEY = 'alumnibridge_dev_only'
 $env:OBJECT_STORAGE_SECRET_KEY = 'local_minio_only_change_me'
 $env:OBJECT_STORAGE_BUCKET = 'alumnibridge-profile-photos'
 $env:OBJECT_STORAGE_SECURE = 'false'
+$DirectoryKeyBytes = New-Object byte[] 32
+$DirectoryRng = [Security.Cryptography.RandomNumberGenerator]::Create()
+try {
+    $DirectoryRng.GetBytes($DirectoryKeyBytes)
+    $env:DIRECTORY_CURSOR_KEY = [Convert]::ToBase64String($DirectoryKeyBytes)
+} finally { $DirectoryRng.Dispose() }
 Push-Location apps/api
 go mod download
 go run ./cmd/migrate up
@@ -62,6 +68,16 @@ Pop-Location
 ```
 
 The web app is at `http://localhost:5173`; Keycloak is at `http://localhost:18085`; API liveness is `http://localhost:8080/health`; readiness is `http://localhost:8080/ready`. Create an account from the web app's **Join the community** button, then select Student or Alumni. Alumni memberships start as `pending`; administrator review is a later milestone. Keycloak's local admin console uses username `localadmin` and password `local_admin_only` from `.env.example`. The browser uses Authorization Code Flow with PKCE; the API validates Keycloak access tokens and never accepts a client-supplied user ID. The example client redirects only to `http://localhost:5173/`. Set `VITE_OIDC_CALLBACK_URI` to this exact URI, including the trailing slash. Existing Keycloak databases are not updated by realm import: in the Keycloak Admin Console, inspect **Clients → alumnibridge-web → Settings → Valid redirect URIs** and set the sole value to `http://localhost:5173/` if it differs. Keep **Web origins** at `http://localhost:5173`. The API does not load `.env` itself: set its environment variables in the process as shown above. If you use `.env`, update the commands and corresponding application environment values together.
+
+## Directory backend configuration
+
+Milestone 4 Phase B adds anonymous `GET /api/v1/directory` and authenticated owner `GET/PATCH /api/v1/users/me/profile/discovery`. Phase D adds an anonymous `/alumni` page with search, filters and cursor navigation, plus authenticated discovery and per-membership academic disclosure controls at `/settings/privacy`. Existing PUBLIC profiles are not listed until a verified alumni owner explicitly opts in. Academic filters require separate membership consent; onboarding cannot grant verification. The UI accepts exact public institution/program reference slugs because no public reference catalog endpoint exists. See [Phase D frontend implementation](docs/milestone-4-phase-d-frontend.md).
+
+`DIRECTORY_CURSOR_KEY` is mandatory for native API startup: canonical base64 of 32 random bytes. On macOS/Linux use `export DIRECTORY_CURSOR_KEY="$(openssl rand -base64 32)"`; Windows generation is included above. Store the generated value in your environment/secret manager if cursors should survive restarts. Key rotation invalidates outstanding 15-minute cursors safely. Compose and `.env.example` contain an explicitly development-only fallback; replace it for shared deployments. Never print real keys or cursor tokens in logs. See [Phase B backend and isolated testing](docs/milestone-4-phase-b-backend.md).
+
+Phase C adds configurable per-process search controls: `DIRECTORY_REQUEST_TIMEOUT_MS=2000`, `DIRECTORY_STATEMENT_TIMEOUT_MS=1500`, `DIRECTORY_MAX_CONCURRENT=8`, `DIRECTORY_RATE_PER_MINUTE=60`, `DIRECTORY_BURST=10`, `DIRECTORY_MAX_CLIENTS=10000`, and `DIRECTORY_CLIENT_TTL_SECONDS=600`. These are validated optional native defaults and explicit Compose/CI settings. Search has a separate connection pool capped at the admission limit; include it alongside the primary pool in PostgreSQL capacity planning. Rate exhaustion returns 429 with `Retry-After`; overload and timeouts have distinct 503 error codes.
+
+Client identity is the direct TCP peer, with canonical IPv4/IPv6 addresses. `Forwarded` and `X-Forwarded-For` are ignored, including from proxies. With Nginx/Vite/another proxy, clients share the proxy's API-facing bucket. Enforce real source-IP limits at the ingress before shared deployment; setting a forwarding header does not configure a trusted proxy. Limits are per process and reset on restart. See [Phase C measurements, configuration and isolated test instructions](docs/milestone-4-phase-c-hardening.md).
 
 ## Checks
 

@@ -28,7 +28,7 @@ Planned modules:
 | `profiles` | Professional profiles, experience, education, skills, publication policy | Member and institution identifiers |
 | `verification` | Alumni claims, restricted evidence metadata, review decisions and audit trail | Member and institution identifiers |
 | `connections` | Requests and accepted connection state | Member identifiers |
-| `directory` | Public alumni projection and search policy | Read ports supplied by profiles and verification |
+| `directory` (Milestone 4 backend) | Opted-in verified alumni projection and bounded search | Profiles publication policy and a consumer-owned read port over trusted profile/membership/reference data |
 
 Start with packages only when a milestone needs them. A module can have `domain`, `app`, and `adapter` packages if this separation clarifies real dependencies; do not create empty layers. Domain and application code must not import Chi, pgx, sqlc output, Keycloak SDKs, or HTTP DTOs. HTTP and PostgreSQL adapters implement the inward-facing ports. Constructors wire concrete implementations in `cmd/api`.
 
@@ -46,7 +46,10 @@ Milestone 3 profile schema and API boundaries are recorded in [professional-prof
 
 - PostgreSQL is the system of record. UUID primary keys and `timestamptz` UTC instants are the baseline. Each module owns its schema changes, even though all tables live in one database.
 - Handwritten, versioned SQL migrations are authoritative. `sqlc` generates query code for `pgx/v5`; generated code stays in adapters and is committed only after the generation policy is agreed. [sqlc's guide](https://docs.sqlc.dev/en/latest/howto/generate.html) supports this combination.
-- Directory queries join or project only verified and discoverable alumni, use parameterized SQL, deterministic ordering, and bounded pagination. Start with indexed PostgreSQL filtering; assess full-text/trigram search only if real query needs justify it.
+- Milestone 4 [directory design](milestone-4-directory-design.md) and [ADR 0002](decisions/0002-directory-discoverability.md) define implemented separate default-false directory consent. Queries require PUBLIC, moderator VISIBLE, opt-in and trusted verified alumni membership. Academic filters/DTOs require additional per-membership consent; company/title/skills matching obeys existing publication flags. Student/pending direct PUBLIC profile access does not imply directory eligibility. Phase A introduced no code/schema; Phase B now implements migration 000006 and owner/public directory APIs, documented in [backend evidence](milestone-4-phase-b-backend.md).
+- Directory uses a consumer-defined search repository implemented by a PostgreSQL adapter, sharing explicit profile publication policy and SQL contract fixtures. Consent writes remain in profiles; directory neither promotes membership status nor calls the full profile API per result. Use parameterized bounded queries, deterministic canonical-slug order and authenticated opaque cursors containing no internal IDs. Read eligibility and projected fields in the same statement; no long-lived browsing snapshot, public totals or shared response cache. Search uses the same Go-derived Unicode simple lowercase/whitespace translation on both query and stored values, with explicit C comparison, avoiding database locale drift. Measure indexes against that exact expression before full-text/trigram search or other optimization.
+- Milestone 4 Phase C bounds anonymous search with a request deadline, non-queued per-process admission, a finite source-IP token bucket and a separate PostgreSQL search pool. A read-only transaction scopes statement timeout with `set_config(..., true)`; canceled/error transactions roll back with a separate bounded cleanup context. The ordered eligible subquery uses indexed lateral probes before field matching; ASCII normalization takes a contract-equivalent fast path and other Unicode retains the Go-derived mapping. No persistent projection, new index or schema migration is introduced. See [hardening evidence](milestone-4-phase-c-hardening.md). Forwarding headers are ignored; production proxy/distributed enforcement remains an ingress responsibility.
+- Milestone 4 Phase D adds an anonymous React route at `/alumni` using the public Directory DTO. URL query state contains committed filters; opaque page cursors stay in component memory. TanStack Query aborts obsolete searches, masks downloaded cards during revalidation and does not retain inactive Directory data. A visible active page rechecks every 15 seconds through the same query observer; hidden tabs and pending or failed searches do not poll, and 429/503 require manual recovery rather than automatic focus retry. Owner discovery controls share the authenticated privacy page and invalidate public queries after consent/publication changes. See [frontend implementation](milestone-4-phase-d-frontend.md) and [Phase E acceptance](milestone-4-phase-e-acceptance.md).
 - Keep restricted verification data separate from public profile read models. Define public response fields explicitly; never serialize database rows directly.
 - Cross-module changes that must succeed together use one database transaction coordinated by an application service. Avoid a generic repository or event bus until a concrete use case needs one.
 
@@ -62,7 +65,7 @@ Milestone 3 profile schema and API boundaries are recorded in [professional-prof
 - Environment variables configure API address, database URL, OIDC issuer/audience, CORS origins, and log level. A checked-in example file documents names, never credentials. Fail startup on invalid required values.
 - Podman Compose is the verified Windows local runtime for application PostgreSQL, Keycloak PostgreSQL, and Keycloak. API and Vite run natively for development. Production deployment topology is not assumed. Health endpoints distinguish process liveness from PostgreSQL readiness.
 - Go standard `testing` covers domain/application behavior; PostgreSQL integration tests exercise SQL and migrations; HTTP contract tests cover public field allowlists and authorization. Frontend checks include typecheck, lint, build, and focused behavior tests when implemented.
-- GitHub Actions should run format/lint checks, Go tests, web checks, migration/sqlc generation checks, and secret-safe build verification. Add checks with the milestones that introduce their code.
+- [GitHub Actions CI](../.github/workflows/ci.yml) now runs backend test/race/vet/build, frontend test/lint/build, isolated PostgreSQL migration up/down/up plus MinIO integration, and whitespace checks on PRs and master pushes. Master `1537c88` passed all four jobs. Required branch protection remains pending in #10; browser CI and pinned sqlc generation checks are not present. Extend existing suites for directory privacy/cursor/consent behavior, keeping mutating integration tests on disposable databases.
 
 ## Proposed repository layout
 
@@ -71,7 +74,7 @@ alumnibridge/
   AGENTS.md
   README.md
   compose.yaml                     # future local development services
-  .github/workflows/               # future CI
+  .github/workflows/               # CI exists
   apps/
     api/
       cmd/api/                      # composition root and server entry point
@@ -101,7 +104,7 @@ alumnibridge/
     implementation-plan.md
 ```
 
-The API and web shells, identity module, Keycloak realm, PostgreSQL migrations, and OpenAPI contract exist. Local macOS Docker Compose builds the Go API and React web app, runs migrations as a one-shot service, and serves the web app through Nginx with an `/api/` proxy. The API fetches JWKS from Keycloak on the Compose network while validating the browser-visible localhost issuer. The web app uses one exact OIDC callback URI for login, registration, session restoration, and logout. It stores a same-origin destination in session storage while Keycloak handles the callback at the root URL. This keeps Keycloak's redirect allowlist limited to one URI; realm import does not change clients already stored in Keycloak. Owner and public profile backend routes are implemented; directory, verification workflow and connection paths remain future milestones.
+The API and web shells, identity module, Keycloak realm, PostgreSQL migrations, and OpenAPI contract exist. Local macOS Docker Compose builds the Go API and React web app, runs migrations as a one-shot service, and serves the web app through Nginx with an `/api/` proxy. The API fetches JWKS from Keycloak on the Compose network while validating the browser-visible localhost issuer. The web app uses one exact OIDC callback URI for login, registration, session restoration, and logout. It stores a same-origin destination in session storage while Keycloak handles the callback at the root URL. This keeps Keycloak's redirect allowlist limited to one URI; realm import does not change clients already stored in Keycloak. Owner and public profile backend routes, directory backend routes and the anonymous Directory UI are implemented; verification workflow and connection paths remain future work.
 
 ## Planned dependencies
 

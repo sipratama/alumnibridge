@@ -107,7 +107,7 @@ func (s *PublishingService) Public(ctx context.Context, slug string) (Publicatio
 	if err != nil {
 		return Publication{}, err
 	}
-	if p.Visibility != "public" || p.Moderation != "visible" {
+	if !PubliclyVisible(p.Visibility, p.Moderation) {
 		return Publication{}, ErrNotFound
 	}
 	return p, nil

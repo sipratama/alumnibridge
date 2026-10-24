@@ -8,6 +8,7 @@ import {
   LockKeyhole,
   LogOut,
   MapPin,
+  Search,
   ShieldCheck,
   UserRound,
   X,
@@ -49,6 +50,7 @@ export function MemberLayout() {
         <nav className="member-nav" aria-label="Member navigation">
           {[
             ['/dashboard', 'Home', Home],
+            ['/alumni', 'Alumni Directory', Search],
             ['/profile', 'My Profile', UserRound],
             ['/account', 'Account', GraduationCap],
             ['/settings/privacy', 'Privacy Settings', LockKeyhole],
