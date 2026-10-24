@@ -42,7 +42,7 @@ export function HistorySection({
     request<void>(
       `${ownerPath}/${kind}/${encodeURIComponent(item.id)}`,
       token,
-      { ...json('DELETE'), headers: { 'If-Match': '"ab-' + (isWork ? 'experience' : 'education') + '-v' + item.revision + '"' } },
+      { ...json('DELETE'), headers: { 'If-Match': '"ab-' + (isWork ? 'experience' : 'education') + '-' + item.id + '-v' + item.revision + '"' } },
     ),
   )
   return (
@@ -182,7 +182,7 @@ function ExperienceEditor({
     request<Experience>(
       `${ownerPath}/experiences${item ? `/${encodeURIComponent(item.id)}` : ''}`,
       token,
-      { ...json(item ? 'PATCH' : 'POST', body), headers: item ? { 'If-Match': '"ab-experience-v' + item.revision + '"' } : {} },
+      { ...json(item ? 'PATCH' : 'POST', body), headers: item ? { 'If-Match': '"ab-experience-' + item.id + '-v' + item.revision + '"' } : {} },
     ),
   )
   return (
@@ -310,7 +310,7 @@ function EducationEditor({
     request<Education>(
       `${ownerPath}/educations${item ? `/${encodeURIComponent(item.id)}` : ''}`,
       token,
-      { ...json(item ? 'PATCH' : 'POST', body), headers: item ? { 'If-Match': '"ab-education-v' + item.revision + '"' } : {} },
+      { ...json(item ? 'PATCH' : 'POST', body), headers: item ? { 'If-Match': '"ab-education-' + item.id + '-v' + item.revision + '"' } : {} },
     ),
   )
   return (
