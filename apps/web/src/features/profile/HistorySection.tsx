@@ -38,11 +38,11 @@ export function HistorySection({
   const [editing, setEditing] = useState<Experience | Education | 'new'>()
   const [removing, setRemoving] = useState<Experience | Education>()
   const [message, setMessage] = useState('')
-  const remove = useOwnerMutation((id: string, token) =>
+  const remove = useOwnerMutation((item: Experience | Education, token) =>
     request<void>(
-      `${ownerPath}/${kind}/${encodeURIComponent(id)}`,
+      `${ownerPath}/${kind}/${encodeURIComponent(item.id)}`,
       token,
-      json('DELETE'),
+      { ...json('DELETE'), headers: { 'If-Match': '"ab-' + (isWork ? 'experience' : 'education') + '-v' + item.revision + '"' } },
     ),
   )
   return (
@@ -142,7 +142,7 @@ export function HistorySection({
           onClose={() => setRemoving(undefined)}
           onConfirm={() => {
             void remove
-              .mutateAsync(removing.id)
+              .mutateAsync(removing)
               .then(() => {
                 setRemoving(undefined)
                 setMessage(`${title} removed.`)
@@ -182,7 +182,7 @@ function ExperienceEditor({
     request<Experience>(
       `${ownerPath}/experiences${item ? `/${encodeURIComponent(item.id)}` : ''}`,
       token,
-      json(item ? 'PATCH' : 'POST', body),
+      { ...json(item ? 'PATCH' : 'POST', body), headers: item ? { 'If-Match': '"ab-experience-v' + item.revision + '"' } : {} },
     ),
   )
   return (
@@ -310,7 +310,7 @@ function EducationEditor({
     request<Education>(
       `${ownerPath}/educations${item ? `/${encodeURIComponent(item.id)}` : ''}`,
       token,
-      json(item ? 'PATCH' : 'POST', body),
+      { ...json(item ? 'PATCH' : 'POST', body), headers: item ? { 'If-Match': '"ab-education-v' + item.revision + '"' } : {} },
     ),
   )
   return (
