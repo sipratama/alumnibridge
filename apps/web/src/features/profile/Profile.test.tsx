@@ -182,7 +182,7 @@ beforeEach(() => {
           if (method === 'PATCH') {
             const entry = list.find((item) => item.id === id)
             Object.assign(entry!, body)
-            if (entry) entry.revision = Number(entry.revision ?? 1) + 1
+            if (entry) (entry as Record<string, unknown>).revision = Number((entry as Record<string, unknown>).revision ?? 1) + 1
             return response(entry)
           }
           return response(list)
