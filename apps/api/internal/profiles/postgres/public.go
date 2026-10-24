@@ -151,8 +151,13 @@ func (s *Store) CleanupPhotos(ctx context.Context, remove func(context.Context, 
 			continue
 		}
 		if err = remove(ctx, key); err != nil {
-			_, _ = tx.Exec(ctx, `UPDATE profile_photo_objects SET expires_at=now()+interval '1 minute' WHERE object_key=$1`, key)
-			tx.Commit(ctx)
+			if _, retryErr := tx.Exec(ctx, `UPDATE profile_photo_objects SET expires_at=now()+interval '1 minute' WHERE object_key=$1`, key); retryErr != nil {
+				tx.Rollback(ctx)
+				return errors.Join(err, retryErr)
+			}
+			if commitErr := tx.Commit(ctx); commitErr != nil {
+				return errors.Join(err, commitErr)
+			}
 			return err
 		}
 		_, err = tx.Exec(ctx, `DELETE FROM profile_photo_objects WHERE object_key=$1`, key)

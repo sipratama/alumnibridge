@@ -94,15 +94,6 @@ func (h *Handler) uploadPhoto(w http.ResponseWriter, r *http.Request) {
 		fail(w, profiles.ErrPhotoFormat)
 		return
 	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, profiles.MaxPhotoBytes+1))
-	if err != nil {
-		fail(w, profiles.ErrInvalid)
-		return
-	}
-	if len(body) > profiles.MaxPhotoBytes {
-		fail(w, profiles.ErrPhotoTooLarge)
-		return
-	}
 	u, err := owner(h, r)
 	if err != nil {
 		fail(w, err)
@@ -112,7 +103,7 @@ func (h *Handler) uploadPhoto(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	if err = h.publication.UploadPhoto(r.Context(), u, body, kind); err != nil {
+	if err = h.publication.UploadPhoto(r.Context(), u, r.Body, kind); err != nil {
 		fail(w, err)
 		return
 	}

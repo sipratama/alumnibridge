@@ -19,12 +19,27 @@ var ErrPhotoTooLarge = errors.New("photo exceeds limit")
 var ErrPhotoFormat = errors.New("unsupported photo format")
 var ErrStorage = errors.New("photo storage unavailable")
 
+type photoBuffer struct{ buffer bytes.Buffer }
+
+func (b *photoBuffer) Len() int      { return b.buffer.Len() }
+func (b *photoBuffer) Bytes() []byte { return b.buffer.Bytes() }
+
+func (b *photoBuffer) Write(p []byte) (int, error) {
+	if len(p) > MaxPhotoBytes-b.Len() {
+		return 0, ErrPhotoTooLarge
+	}
+	return b.buffer.Write(p)
+}
+func photoFormat(declared string) string {
+	return map[string]string{"image/jpeg": "jpeg", "image/png": "png", "image/webp": "webp"}[declared]
+}
+
 // NormalizePhoto decodes the entire image and re-encodes pixels, discarding metadata and trailing payloads.
 func NormalizePhoto(data []byte, declared string) ([]byte, string, error) {
 	if len(data) > MaxPhotoBytes {
 		return nil, "", ErrPhotoTooLarge
 	}
-	expected := map[string]string{"image/jpeg": "jpeg", "image/png": "png", "image/webp": "webp"}[declared]
+	expected := photoFormat(declared)
 	if expected == "" {
 		return nil, "", ErrPhotoFormat
 	}
@@ -39,13 +54,16 @@ func NormalizePhoto(data []byte, declared string) ([]byte, string, error) {
 	if err != nil || format != expected {
 		return nil, "", ErrInvalid
 	}
-	var out bytes.Buffer
+	var out photoBuffer
 	kind := "image/png"
 	if format == "jpeg" {
 		kind = "image/jpeg"
 		err = jpeg.Encode(&out, img, &jpeg.Options{Quality: 85})
 	} else {
 		err = png.Encode(&out, img)
+	}
+	if errors.Is(err, ErrPhotoTooLarge) {
+		return nil, "", ErrPhotoTooLarge
 	}
 	if err != nil {
 		return nil, "", ErrInvalid
@@ -55,12 +73,25 @@ func NormalizePhoto(data []byte, declared string) ([]byte, string, error) {
 	}
 	return out.Bytes(), kind, nil
 }
-func (s *PublishingService) UploadPhoto(ctx context.Context, id uuid.UUID, data []byte, declared string) error {
+func (s *PublishingService) UploadPhoto(ctx context.Context, id uuid.UUID, input io.Reader, declared string) error {
+	if photoFormat(declared) == "" {
+		return ErrPhotoFormat
+	}
 	select {
 	case s.photoSlots <- struct{}{}:
 		defer func() { <-s.photoSlots }()
 	case <-ctx.Done():
 		return ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	data, err := io.ReadAll(io.LimitReader(input, MaxPhotoBytes+1))
+	if err != nil {
+		return ErrInvalid
+	}
+	if len(data) > MaxPhotoBytes {
+		return ErrPhotoTooLarge
 	}
 	body, kind, err := NormalizePhoto(data, declared)
 	if err != nil {

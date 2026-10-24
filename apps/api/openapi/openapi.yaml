@@ -214,7 +214,7 @@ paths:
         '503': {description: Photo storage unavailable}
     post:
       summary: Upload or replace the owner's photo using raw image bytes
-      description: Maximum 5 MiB input and normalized output; dimensions at most 4096 per side and 8 million pixels. JPEG is re-encoded, PNG and WebP become PNG; metadata is discarded. Filenames and object keys are never accepted. Replaced and abandoned objects are collected by a durable retry worker.
+      description: At most four uploads buffer/process bodies concurrently per API process; streamed bodies are limited without relying on Content-Length. Maximum 5 MiB input and normalized output; dimensions at most 4096 per side and 8 million pixels. JPEG is re-encoded, PNG and WebP become PNG; metadata is discarded. Filenames and object keys are never accepted. Replaced and abandoned objects are collected by a durable retry worker.
       security: [{bearerAuth: []}]
       requestBody:
         required: true
