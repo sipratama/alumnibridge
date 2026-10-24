@@ -15,6 +15,7 @@ import (
 var ErrInvalid = errors.New("invalid profile input")
 var ErrNotFound = errors.New("profile resource not found")
 var ErrConflict = errors.New("profile conflict")
+var ErrStale = errors.New("stale resource revision")
 
 var slugPattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 var reserved = map[string]bool{"api": true, "admin": true, "auth": true, "in": true, "me": true, "settings": true, "dashboard": true, "login": true, "logout": true, "register": true, "onboarding": true, "profile": true, "profiles": true}
