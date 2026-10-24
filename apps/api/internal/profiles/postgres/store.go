@@ -53,7 +53,7 @@ func (s *Store) Profile(ctx context.Context, id uuid.UUID) (profiles.Profile, er
 	}
 	defer tx.Rollback(ctx)
 	var p profiles.Profile
-	err = tx.QueryRow(ctx, `SELECT COALESCE(u.display_name,''),p.slug,p.headline,p.bio,p.location,p.current_company,p.current_job_title FROM profiles p JOIN users u ON u.id=p.user_id WHERE p.user_id=$1`, id).Scan(&p.DisplayName, &p.Slug, &p.Headline, &p.Bio, &p.Location, &p.CurrentCompany, &p.CurrentJobTitle)
+	err = tx.QueryRow(ctx, `SELECT COALESCE(u.display_name,''),p.slug,p.headline,p.bio,p.location,p.current_company,p.current_job_title,p.content_revision FROM profiles p JOIN users u ON u.id=p.user_id WHERE p.user_id=$1`, id).Scan(&p.DisplayName, &p.Slug, &p.Headline, &p.Bio, &p.Location, &p.CurrentCompany, &p.CurrentJobTitle,&p.Revision)
 	if err == nil {
 		return p, tx.Commit(ctx)
 	}
@@ -65,7 +65,7 @@ func (s *Store) Profile(ctx context.Context, id uuid.UUID) (profiles.Profile, er
 		return p, missing(err)
 	}
 	// A second request may have initialized the profile while this transaction waited for the user lock.
-	err = tx.QueryRow(ctx, `SELECT slug,headline,bio,location,current_company,current_job_title FROM profiles WHERE user_id=$1`, id).Scan(&p.Slug, &p.Headline, &p.Bio, &p.Location, &p.CurrentCompany, &p.CurrentJobTitle)
+	err = tx.QueryRow(ctx, `SELECT slug,headline,bio,location,current_company,current_job_title,content_revision FROM profiles WHERE user_id=$1`, id).Scan(&p.Slug, &p.Headline, &p.Bio, &p.Location, &p.CurrentCompany, &p.CurrentJobTitle,&p.Revision)
 	if err == nil {
 		p.DisplayName = name
 		return p, tx.Commit(ctx)
@@ -99,6 +99,7 @@ func (s *Store) Profile(ctx context.Context, id uuid.UUID) (profiles.Profile, er
 		}
 		p.DisplayName = name
 		p.Slug = candidate
+        p.Revision=1
 		return p, tx.Commit(ctx)
 	}
 	return p, profiles.ErrConflict
@@ -150,7 +151,7 @@ func (s *Store) Counts(ctx context.Context, id uuid.UUID) ([3]int, error) {
 	return c, err
 }
 func (s *Store) Experiences(ctx context.Context, id uuid.UUID) ([]profiles.Experience, error) {
-	rows, err := s.db.Query(ctx, `SELECT id,company,title,employment_type,location,start_date::text,end_date::text,is_current,description FROM profile_experiences WHERE user_id=$1 ORDER BY start_date DESC,id LIMIT 100`, id)
+	rows, err := s.db.Query(ctx, `SELECT id,company,title,employment_type,location,start_date::text,end_date::text,is_current,description,revision FROM profile_experiences WHERE user_id=$1 ORDER BY start_date DESC,id LIMIT 100`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +159,7 @@ func (s *Store) Experiences(ctx context.Context, id uuid.UUID) ([]profiles.Exper
 	out := []profiles.Experience{}
 	for rows.Next() {
 		var e profiles.Experience
-		if err = rows.Scan(&e.ID, &e.Company, &e.JobTitle, &e.EmploymentType, &e.Location, &e.StartDate, &e.EndDate, &e.IsCurrent, &e.Description); err != nil {
+		if err = rows.Scan(&e.ID, &e.Company, &e.JobTitle, &e.EmploymentType, &e.Location, &e.StartDate, &e.EndDate, &e.IsCurrent, &e.Description,&e.Revision); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -197,7 +198,7 @@ func (s *Store) DeleteExperience(ctx context.Context, id, item uuid.UUID) error 
 	return nil
 }
 func (s *Store) Educations(ctx context.Context, id uuid.UUID) ([]profiles.Education, error) {
-	rows, err := s.db.Query(ctx, `SELECT id,institution_name,degree,field_of_study,start_date::text,end_date::text,description FROM profile_educations WHERE user_id=$1 ORDER BY start_date DESC NULLS LAST,id LIMIT 100`, id)
+	rows, err := s.db.Query(ctx, `SELECT id,institution_name,degree,field_of_study,start_date::text,end_date::text,description,revision FROM profile_educations WHERE user_id=$1 ORDER BY start_date DESC NULLS LAST,id LIMIT 100`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +206,7 @@ func (s *Store) Educations(ctx context.Context, id uuid.UUID) ([]profiles.Educat
 	out := []profiles.Education{}
 	for rows.Next() {
 		var e profiles.Education
-		if err = rows.Scan(&e.ID, &e.Institution, &e.Degree, &e.FieldOfStudy, &e.StartDate, &e.EndDate, &e.Description); err != nil {
+		if err = rows.Scan(&e.ID, &e.Institution, &e.Degree, &e.FieldOfStudy, &e.StartDate, &e.EndDate, &e.Description,&e.Revision); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -313,4 +314,50 @@ func (s *Store) DeleteSkill(ctx context.Context, id, item uuid.UUID) error {
 		return profiles.ErrNotFound
 	}
 	return nil
+}
+
+
+func (s *Store) UpdateProfileRevision(ctx context.Context, id uuid.UUID, expected int64, change func(profiles.Profile)(profiles.Profile,error))(profiles.Profile,error){
+ tx,err:=s.db.Begin(ctx);if err!=nil{return profiles.Profile{},err};defer tx.Rollback(ctx)
+ var p profiles.Profile
+ var locked uuid.UUID
+ if err=tx.QueryRow(ctx,`SELECT id FROM users WHERE id=$1 FOR UPDATE`,id).Scan(&locked);err!=nil{return p,missing(err)}
+ err=tx.QueryRow(ctx,`SELECT p.slug,COALESCE(u.display_name,''),p.headline,p.bio,p.location,p.current_company,p.current_job_title,p.content_revision FROM profiles p JOIN users u ON u.id=p.user_id WHERE p.user_id=$1 FOR UPDATE OF p`,id).Scan(&p.Slug,&p.DisplayName,&p.Headline,&p.Bio,&p.Location,&p.CurrentCompany,&p.CurrentJobTitle,&p.Revision)
+ if err!=nil{return p,missing(err)}
+ if p.Revision!=expected{return p,profiles.ErrStale}
+ old:=p.Slug
+ p,err=change(p);if err!=nil{return p,err}
+ if old!=p.Slug{
+  var reserved uuid.UUID
+  err=tx.QueryRow(ctx,`INSERT INTO profile_slug_history(slug,user_id) VALUES($1,$2) ON CONFLICT(slug) DO UPDATE SET slug=EXCLUDED.slug WHERE profile_slug_history.user_id=EXCLUDED.user_id RETURNING user_id`,p.Slug,id).Scan(&reserved)
+  if errors.Is(err,pgx.ErrNoRows){return p,profiles.ErrConflict}
+  if err!=nil{return p,dbError(err)}
+ }
+ tag,err:=tx.Exec(ctx,`UPDATE profiles SET slug=$2,headline=$3,bio=$4,location=$5,current_company=$6,current_job_title=$7,content_revision=content_revision+1,updated_at=now() WHERE user_id=$1 AND content_revision=$8`,id,p.Slug,p.Headline,p.Bio,p.Location,p.CurrentCompany,p.CurrentJobTitle,expected)
+ if err!=nil{return p,dbError(err)};if tag.RowsAffected()!=1{return p,profiles.ErrStale}
+ _,err=tx.Exec(ctx,`UPDATE users SET display_name=$2,updated_at=now() WHERE id=$1`,id,p.DisplayName)
+ if err!=nil{return p,err}
+ if err=tx.Commit(ctx);err!=nil{return p,err};p.Revision=expected+1;return p,nil
+}
+func (s *Store) SaveExperienceRevision(ctx context.Context,id uuid.UUID,e profiles.Experience,expected int64)(profiles.Experience,error){
+ err:=s.db.QueryRow(ctx,`UPDATE profile_experiences SET company=$3,title=$4,employment_type=$5,location=$6,start_date=$7,end_date=$8,is_current=$9,description=$10,updated_at=now() WHERE id=$1 AND user_id=$2 AND revision=$11 RETURNING id,revision`,e.ID,id,e.Company,e.JobTitle,e.EmploymentType,e.Location,e.StartDate,e.EndDate,e.IsCurrent,e.Description,expected).Scan(&e.ID,&e.Revision)
+ if errors.Is(err,pgx.ErrNoRows){return e,s.itemRevisionError(ctx,"profile_experiences",id,e.ID)};return e,dbError(err)
+}
+func (s *Store) SaveEducationRevision(ctx context.Context,id uuid.UUID,e profiles.Education,expected int64)(profiles.Education,error){
+ err:=s.db.QueryRow(ctx,`UPDATE profile_educations SET institution_name=$3,degree=$4,field_of_study=$5,start_date=$6,end_date=$7,description=$8,updated_at=now() WHERE id=$1 AND user_id=$2 AND revision=$9 RETURNING id,revision`,e.ID,id,e.Institution,e.Degree,e.FieldOfStudy,e.StartDate,e.EndDate,e.Description,expected).Scan(&e.ID,&e.Revision)
+ if errors.Is(err,pgx.ErrNoRows){return e,s.itemRevisionError(ctx,"profile_educations",id,e.ID)};return e,dbError(err)
+}
+func (s *Store) itemRevisionError(ctx context.Context,table string,owner,item uuid.UUID)error{
+ if table!="profile_educations"&&table!="profile_experiences"{return profiles.ErrInvalid}
+ var exists bool
+ err:=s.db.QueryRow(ctx,`SELECT EXISTS(SELECT 1 FROM `+table+` WHERE user_id=$1 AND id=$2)`,owner,item).Scan(&exists)
+ if err!=nil{return err};if exists{return profiles.ErrStale};return profiles.ErrNotFound
+}
+func (s *Store) DeleteExperienceRevision(ctx context.Context,id,item uuid.UUID,revision int64)error{
+ tag,err:=s.db.Exec(ctx,`DELETE FROM profile_experiences WHERE id=$1 AND user_id=$2 AND revision=$3`,item,id,revision)
+ if err!=nil{return err};if tag.RowsAffected()==0{return s.itemRevisionError(ctx,"profile_experiences",id,item)};return nil
+}
+func (s *Store) DeleteEducationRevision(ctx context.Context,id,item uuid.UUID,revision int64)error{
+ tag,err:=s.db.Exec(ctx,`DELETE FROM profile_educations WHERE id=$1 AND user_id=$2 AND revision=$3`,item,id,revision)
+ if err!=nil{return err};if tag.RowsAffected()==0{return s.itemRevisionError(ctx,"profile_educations",id,item)};return nil
 }
