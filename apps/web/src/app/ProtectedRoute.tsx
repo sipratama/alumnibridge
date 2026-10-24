@@ -1,5 +1,5 @@
 import { Navigate, Outlet } from 'react-router-dom'
-import { useAuth } from './auth'
+import { useAuth } from './authContext'
 import { Button } from '@/components/ui/button'
 
 export function ProtectedRoute({ requireOnboarding = false }: { requireOnboarding?: boolean }) {

@@ -10,6 +10,11 @@ services:
       OIDC_JWKS_URL: http://keycloak:8080/realms/alumnibridge/protocol/openid-connect/certs
       OIDC_AUDIENCE: ${OIDC_AUDIENCE:-alumnibridge-api}
       OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-alumnibridge-web}
+      OBJECT_STORAGE_ENDPOINT: minio:9000
+      OBJECT_STORAGE_ACCESS_KEY: ${MINIO_ROOT_USER:-alumnibridge_dev_only}
+      OBJECT_STORAGE_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-local_minio_only_change_me}
+      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-alumnibridge-profile-photos}
+      OBJECT_STORAGE_SECURE: "false"
     ports:
       - "${API_PORT:-8080}:8080"
     depends_on:
@@ -19,6 +24,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      minio:
+        condition: service_healthy
     restart: unless-stopped
   migrate:
     build:
@@ -44,6 +51,23 @@ services:
     depends_on:
       - api
     restart: unless-stopped
+  minio:
+    build:
+      context: infrastructure/minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-alumnibridge_dev_only}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-local_minio_only_change_me}
+    ports:
+      - "127.0.0.1:${MINIO_PORT:-19000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-19001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   postgres:
     image: postgres:17-alpine
     environment:
@@ -100,3 +124,4 @@ services:
 volumes:
   postgres_data:
   keycloak_data:
+  minio_data:

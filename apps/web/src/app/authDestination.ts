@@ -16,3 +16,9 @@ export function takeDestination(): string | null {
 export function clearDestination() {
   sessionStorage.removeItem(destinationKey)
 }
+
+// Anonymous check-sso also returns to the stable callback; public deep links must survive it.
+export function takeCallbackDestination(phase: string, pathname: string): string | null {
+  if (pathname !== '/' || (phase !== 'authenticated' && phase !== 'anonymous')) return null
+  return takeDestination()
+}

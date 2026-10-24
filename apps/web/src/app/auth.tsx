@@ -1,9 +1,9 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Keycloak from 'keycloak-js'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, request, type CurrentUser } from '@/shared/api/client'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { clearDestination, rememberDestination, takeDestination } from './authDestination'
+import { clearDestination, rememberDestination, takeCallbackDestination } from './authDestination'
 
 const callbackUri = import.meta.env.VITE_OIDC_CALLBACK_URI ?? 'http://localhost:5173/'
 
@@ -14,18 +14,7 @@ const keycloak = new Keycloak({
 })
 let initialization: Promise<boolean> | undefined
 
-type AuthStatus = 'loading' | 'anonymous' | 'authenticated' | 'error' | 'unauthorized'
-type AuthContextValue = {
-  status: AuthStatus
-  user?: CurrentUser
-  login: () => Promise<void>
-  register: () => Promise<void>
-  logout: () => Promise<void>
-  getToken: () => Promise<string>
-  refreshUser: () => Promise<void>
-}
-
-const AuthContext = createContext<AuthContextValue | undefined>(undefined)
+import { AuthContext, type AuthStatus, type AuthContextValue } from './authContext'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [phase, setPhase] = useState<AuthStatus>('loading')
@@ -45,9 +34,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    if (phase !== 'authenticated') return
-    const destination = takeDestination()
-    if (destination && location.pathname === '/') navigate(destination, { replace: true })
+    const destination = takeCallbackDestination(phase, location.pathname)
+    if (destination) navigate(destination, { replace: true })
   }, [phase, location.pathname, navigate])
 
   async function getToken(): Promise<string> {
@@ -72,10 +60,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }), [status, me.data, queryClient])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-}
-
-export function useAuth(): AuthContextValue {
-  const context = useContext(AuthContext)
-  if (!context) throw new Error('AuthProvider is required')
-  return context
 }

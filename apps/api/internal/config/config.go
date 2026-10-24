@@ -12,13 +12,18 @@ import (
 )
 
 type Config struct {
-	Port            string
-	DatabaseURL     string
-	OIDCIssuer      string
-	OIDCAudience    string
-	OIDCClientID    string
-	OIDCJWKSURL     string
-	ShutdownTimeout time.Duration
+	StorageEndpoint  string
+	StorageAccessKey string
+	StorageSecretKey string
+	StorageBucket    string
+	StorageSecure    bool
+	Port             string
+	DatabaseURL      string
+	OIDCIssuer       string
+	OIDCAudience     string
+	OIDCClientID     string
+	OIDCJWKSURL      string
+	ShutdownTimeout  time.Duration
 }
 
 func Load() (Config, error) {
@@ -38,8 +43,16 @@ func Load() (Config, error) {
 	if parseErr != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || audience == "" || clientID == "" {
 		return Config{}, errors.New("OIDC_ISSUER, OIDC_AUDIENCE, and OIDC_CLIENT_ID are required")
 	}
+	storageEndpoint := os.Getenv("OBJECT_STORAGE_ENDPOINT")
+	storageAccess := os.Getenv("OBJECT_STORAGE_ACCESS_KEY")
+	storageSecret := os.Getenv("OBJECT_STORAGE_SECRET_KEY")
+	storageBucket := os.Getenv("OBJECT_STORAGE_BUCKET")
+	storageSecure, err := strconv.ParseBool(getenv("OBJECT_STORAGE_SECURE", "true"))
+	if err != nil || storageEndpoint == "" || storageAccess == "" || storageSecret == "" || storageBucket == "" {
+		return Config{}, errors.New("object storage configuration is required")
+	}
 	jwksURL := getenv("OIDC_JWKS_URL", issuer+"/protocol/openid-connect/certs")
-	return Config{Port: port, DatabaseURL: url, OIDCIssuer: issuer, OIDCAudience: audience, OIDCClientID: clientID, OIDCJWKSURL: jwksURL, ShutdownTimeout: 10 * time.Second}, nil
+	return Config{StorageEndpoint: storageEndpoint, StorageAccessKey: storageAccess, StorageSecretKey: storageSecret, StorageBucket: storageBucket, StorageSecure: storageSecure, Port: port, DatabaseURL: url, OIDCIssuer: issuer, OIDCAudience: audience, OIDCClientID: clientID, OIDCJWKSURL: jwksURL, ShutdownTimeout: 10 * time.Second}, nil
 }
 
 func (c Config) Address() string { return net.JoinHostPort("", c.Port) }

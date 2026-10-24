@@ -42,6 +42,8 @@ Current identity tables are `users`, `institutions`, `study_programs`, and `memb
 
 ## Data and search
 
+Milestone 3 profile schema and API boundaries are recorded in [professional-profile-design.md](professional-profile-design.md). Phase B adds owner-only profile, experience, education, and skill operations with domain validation, an inward-facing store interface, pgx adapter, and HTTP adapter. Phase C implements public projections, consent and controlled photo storage. Phase D integrates the [professional profile frontend](phase-d-professional-profile-frontend.md) through actor-scoped TanStack Query caches, typed API transport and separate anonymous projections; no backend redesign is introduced.
+
 - PostgreSQL is the system of record. UUID primary keys and `timestamptz` UTC instants are the baseline. Each module owns its schema changes, even though all tables live in one database.
 - Handwritten, versioned SQL migrations are authoritative. `sqlc` generates query code for `pgx/v5`; generated code stays in adapters and is committed only after the generation policy is agreed. [sqlc's guide](https://docs.sqlc.dev/en/latest/howto/generate.html) supports this combination.
 - Directory queries join or project only verified and discoverable alumni, use parameterized SQL, deterministic ordering, and bounded pagination. Start with indexed PostgreSQL filtering; assess full-text/trigram search only if real query needs justify it.
@@ -99,7 +101,7 @@ alumnibridge/
     implementation-plan.md
 ```
 
-The API and web shells, identity module, Keycloak realm, PostgreSQL migrations, and OpenAPI contract exist. Local macOS Docker Compose builds the Go API and React web app, runs migrations as a one-shot service, and serves the web app through Nginx with an `/api/` proxy. The API fetches JWKS from Keycloak on the Compose network while validating the browser-visible localhost issuer. The web app uses one exact OIDC callback URI for login, registration, session restoration, and logout. It stores a same-origin destination in session storage while Keycloak handles the callback at the root URL. This keeps Keycloak's redirect allowlist limited to one URI; realm import does not change clients already stored in Keycloak. Profile, directory, verification, and connection paths describe future milestones.
+The API and web shells, identity module, Keycloak realm, PostgreSQL migrations, and OpenAPI contract exist. Local macOS Docker Compose builds the Go API and React web app, runs migrations as a one-shot service, and serves the web app through Nginx with an `/api/` proxy. The API fetches JWKS from Keycloak on the Compose network while validating the browser-visible localhost issuer. The web app uses one exact OIDC callback URI for login, registration, session restoration, and logout. It stores a same-origin destination in session storage while Keycloak handles the callback at the root URL. This keeps Keycloak's redirect allowlist limited to one URI; realm import does not change clients already stored in Keycloak. Owner and public profile backend routes are implemented; directory, verification workflow and connection paths remain future milestones.
 
 ## Planned dependencies
 
@@ -124,3 +126,7 @@ Pin compatible versions and commit lockfiles when executable projects are added.
 5. **Multi-institution rules:** Define whether one member may affiliate with several programs and whether reviewers are scoped by institution. The initial model should avoid hardcoded UHAMKA IDs or names.
 6. **Search and scale:** Directory performance, case-insensitive company/profession matching, and skill vocabulary need real examples. Start with PostgreSQL indexes and measure before adding a search service.
 7. **Operational setup:** Podman Compose works on the Windows workstation. The Go migration runner needs no external migration CLI. Identity queries currently use parameterized pgx in the storage adapter; adopt sqlc generation when the query set grows and a pinned generator is available, keeping migrations and handwritten SQL authoritative.
+
+The Phase B review adds permanent anonymous slug tombstones after account deletion, a database FK binding current slug ownership, and profile PATCH transformations under row locks. Migration 000004 rollback refuses to lose tombstones. See [review results](reviews/milestone-3-phase-b-review.md).
+
+Phase C publication uses a separate explicit public DTO and SQL allowlist, filtered by both owner consent and moderation visibility. A verified alumni badge is an EXISTS query on trusted membership records. Photos are private MinIO objects served only through checked backend routes. A durable object registry coordinates upload activation, replacement and retry cleanup without distributed transactions. See [Phase C design](phase-c-profile-privacy.md).

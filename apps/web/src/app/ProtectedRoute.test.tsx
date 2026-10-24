@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { ProtectedRoute } from './ProtectedRoute'
 
 const auth = vi.hoisted(() => ({ status: 'anonymous', user: undefined as undefined | { memberships: Array<{ id: string }> } }))
-vi.mock('./auth', () => ({ useAuth: () => ({ ...auth, login: vi.fn() }) }))
+vi.mock('./authContext', () => ({ useAuth: () => ({ ...auth, login: vi.fn() }) }))
 
 function renderRoute(path = '/account') {
   render(<MemoryRouter initialEntries={[path]}><Routes>

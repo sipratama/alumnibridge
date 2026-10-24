@@ -14,8 +14,12 @@ import (
 type Handler struct{ service *identity.Service }
 
 func Register(router chi.Router, service *identity.Service, verifier auth.Verifier) {
+	router.Route("/api/v1", func(r chi.Router) { RegisterRoutes(r, service, verifier) })
+}
+
+func RegisterRoutes(router chi.Router, service *identity.Service, verifier auth.Verifier) {
 	h := &Handler{service: service}
-	router.Route("/api/v1", func(r chi.Router) {
+	router.Group(func(r chi.Router) {
 		r.Use(auth.Middleware(verifier))
 		r.Get("/auth/me", h.me)
 		r.Post("/auth/onboarding", h.onboard)
