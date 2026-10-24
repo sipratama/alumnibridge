@@ -1,4 +1,4 @@
-import { ApiError, request } from '@/shared/api/client'
+import { ApiError, versionedRequest, type WithETag } from '@/shared/api/client'
 
 export type DirectoryFilters = {
   query: string
@@ -32,7 +32,7 @@ export type AcademicConsent = {
   show_study_program: boolean
   show_graduation_year: boolean
 }
-export type DiscoverySettings = {
+export type DiscoverySettings = WithETag & {
   directory_discoverable: boolean
   directory_consented_at: string | null
   eligible: boolean
@@ -143,11 +143,12 @@ export async function searchDirectory(filters: DirectoryFilters, cursor: string 
   return response.json() as Promise<DirectoryPage>
 }
 export function getDiscovery(getToken: () => Promise<string>, signal: AbortSignal) {
-  return request<DiscoverySettings>('/users/me/profile/discovery', getToken, { signal })
+  return versionedRequest<DiscoverySettings>('/users/me/profile/discovery', getToken, { signal })
 }
-export function updateDiscovery(getToken: () => Promise<string>, patch: DiscoveryPatch) {
-  return request<DiscoverySettings>('/users/me/profile/discovery', getToken, {
+export function updateDiscovery(getToken: () => Promise<string>, patch: DiscoveryPatch, etag?: string) {
+  return versionedRequest<DiscoverySettings>('/users/me/profile/discovery', getToken, {
     method: 'PATCH', body: JSON.stringify(patch),
+    headers: etag ? { 'If-Match': etag } : {},
   })
 }
 export function controlledPhotoURL(entry: DirectoryEntry): string | undefined {
