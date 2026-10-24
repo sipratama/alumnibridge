@@ -51,16 +51,12 @@ jobs:
         run: |
           set -euo pipefail
           for file in infrastructure/migrations/*.up.sql; do psql -v ON_ERROR_STOP=1 -f "$file"; done
-      - name: Run PostgreSQL revision and signed JWT owner regression tests
-        working-directory: apps/api
-        run: |
-          go test -count=1 -v ./internal/profiles/postgres ./internal/profiles/http
       - name: Rollback all migrations and reapply in isolation
         run: |
           set -euo pipefail
           mapfile -t down < <(find infrastructure/migrations -maxdepth 1 -name '*.down.sql' | sort -r)
           for file in "${down[@]}"; do psql -v ON_ERROR_STOP=1 -f "$file"; done
           for file in infrastructure/migrations/*.up.sql; do psql -v ON_ERROR_STOP=1 -f "$file"; done
-      - name: Re-run revision and concurrency tests after clean reapply
+      - name: Run PostgreSQL revision and signed JWT owner regression tests
         working-directory: apps/api
-        run: go test -count=1 ./internal/profiles/postgres ./internal/profiles/http
+        run: go test -count=1 -v ./internal/profiles/postgres ./internal/profiles/http
