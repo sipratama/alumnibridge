@@ -42,7 +42,7 @@ func TestSafeFailureResponses(t *testing.T) {
 		err    error
 		status int
 		body   string
-	}{{context.Canceled, 503, "directory_unavailable"}, {context.DeadlineExceeded, 503, "directory_unavailable"}, {errors.New("private SQL detail"), 500, "internal_error"}} {
+	}{{context.Canceled, 408, "directory_canceled"}, {context.DeadlineExceeded, 503, "directory_timeout"}, {errors.New("private SQL detail"), 500, "internal_error"}} {
 		c, _ := directory.NewCursor(make([]byte, 32))
 		r := chi.NewRouter()
 		RegisterRoutes(r, directory.New(failedSearch{tc.err}, c))

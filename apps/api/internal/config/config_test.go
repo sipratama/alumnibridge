@@ -25,6 +25,30 @@ func TestLoad(t *testing.T) {
 	if err != nil || cfg.Address() != ":8080" {
 		t.Fatalf("unexpected config: %+v, %v", cfg, err)
 	}
+	if cfg.DirectoryRequestTimeout.Milliseconds() != 2000 || cfg.DirectoryStatementTimeout.Milliseconds() != 1500 || cfg.DirectoryMaxConcurrent != 8 || cfg.DirectoryRatePerMinute != 60 || cfg.DirectoryBurst != 10 || cfg.DirectoryMaxClients != 10000 || cfg.DirectoryClientTTL.Seconds() != 600 {
+		t.Fatal("unexpected directory defaults")
+	}
+	for _, tc := range []struct{ key, value string }{
+		{"DIRECTORY_REQUEST_TIMEOUT_MS", "0"}, {"DIRECTORY_REQUEST_TIMEOUT_MS", "10000"},
+		{"DIRECTORY_STATEMENT_TIMEOUT_MS", "2000"}, {"DIRECTORY_STATEMENT_TIMEOUT_MS", "oops"},
+		{"DIRECTORY_MAX_CONCURRENT", "0"}, {"DIRECTORY_MAX_CONCURRENT", "65"},
+		{"DIRECTORY_RATE_PER_MINUTE", "0"}, {"DIRECTORY_BURST", "1001"},
+		{"DIRECTORY_MAX_CLIENTS", "100001"}, {"DIRECTORY_CLIENT_TTL_SECONDS", "1"},
+	} {
+		t.Run(tc.key+tc.value, func(t *testing.T) {
+			t.Setenv(tc.key, tc.value)
+			if _, err := Load(); err == nil {
+				t.Fatal("invalid search configuration accepted")
+			}
+		})
+	}
+	t.Run("TTL below burst refill", func(t *testing.T) {
+		t.Setenv("DIRECTORY_RATE_PER_MINUTE", "1")
+		t.Setenv("DIRECTORY_CLIENT_TTL_SECONDS", "60")
+		if _, err := Load(); err == nil {
+			t.Fatal("TTL permits fresh-burst bypass")
+		}
+	})
 }
 
 func TestCursorKeyConfiguration(t *testing.T) {

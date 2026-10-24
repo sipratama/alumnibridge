@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -88,7 +89,10 @@ func TestDirectoryConsentPrivacyAndSignedJWT(t *testing.T) {
 	search := directory.New(directorypg.New(db), codec)
 	router := chi.NewRouter()
 	router.Route("/api/v1", func(r chi.Router) {
-		directoryhttp.RegisterRoutes(r, search)
+		limits := directoryhttp.DefaultLimits()
+		limits.Burst = 1000
+		limits.ClientTTL = 20 * time.Minute
+		directoryhttp.RegisterRoutesWithLimits(r, search, limits, slog.Default())
 		profileshttp.RegisterDiscoveryRoutes(r, profile, discovery, ids, verifier)
 		profileshttp.RegisterPublishingRoutes(r, profile, profiles.NewPublishing(ps, nil), ids, verifier)
 	})

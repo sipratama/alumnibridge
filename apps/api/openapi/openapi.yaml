@@ -256,7 +256,11 @@ paths:
         Unknown/empty parameters, duplicate scalar keys, invalid UTF-8/control text or query strings over 4096 bytes are rejected.
         Unknown valid reference values yield no results. Canonical slug ascending in C collation; no totals, facets or offset.
         Every page rechecks consent. Live pagination is not a cross-request snapshot; renames may cause skips/repeats.
-        Responses and errors use no-store/nosniff. No rate limiting is implemented in Phase B.
+        Responses and errors use no-store/nosniff. Per-process source-IP token bucket defaults to 60/minute, burst 10;
+        IPv4-mapped addresses are canonicalized and forwarding headers are ignored. Proxy deployments share a peer bucket and require ingress enforcement.
+        A full bounded client table or full search admission rejects promptly with 503; no search queue.
+        Default request budget is 2 seconds with a transaction-local 1.5-second database statement timeout.
+        Rate checks precede validation; logged-in callers have no exemption. Disconnected clients may not receive the 408 response.
       parameters:
         - {name: query, in: query, schema: {type: string, minLength: 2, maxLength: 100}, description: Optional display-name literal prefix}
         - {name: institution, in: query, schema: {$ref: '#/components/schemas/DirectoryReferenceSlug'}}
@@ -283,6 +287,8 @@ paths:
             X-Content-Type-Options: {$ref: '#/components/headers/NoSniff'}
           content: {application/json: {schema: {$ref: '#/components/schemas/DirectoryPage'}}}
         '400': {$ref: '#/components/responses/DirectoryInvalid'}
+        '408': {$ref: '#/components/responses/DirectoryCanceled'}
+        '429': {$ref: '#/components/responses/DirectoryRateLimited'}
         '500': {$ref: '#/components/responses/DirectoryInternal'}
         '503': {$ref: '#/components/responses/DirectoryUnavailable'}
   /api/v1/users/me/profile/discovery:
@@ -293,6 +299,8 @@ paths:
       responses:
         '200': {$ref: '#/components/responses/DiscoverySettings'}
         '401': {$ref: '#/components/responses/DiscoveryUnauthorized'}
+        '408': {$ref: '#/components/responses/DirectoryCanceled'}
+        '429': {$ref: '#/components/responses/DirectoryRateLimited'}
         '500': {$ref: '#/components/responses/DirectoryInternal'}
     patch:
       summary: Update owner-only discovery and academic publication consent atomically
@@ -317,6 +325,8 @@ paths:
         '409': {$ref: '#/components/responses/DiscoveryConflict'}
         '413': {$ref: '#/components/responses/DiscoveryTooLarge'}
         '415': {$ref: '#/components/responses/DiscoveryMedia'}
+        '408': {$ref: '#/components/responses/DirectoryCanceled'}
+        '429': {$ref: '#/components/responses/DirectoryRateLimited'}
         '500': {$ref: '#/components/responses/DirectoryInternal'}
 components:
   headers:
@@ -349,15 +359,42 @@ components:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}
           example: {error: internal_error}
-    DirectoryUnavailable:
-      description: Search canceled or deadline exceeded
+    DirectoryCanceled:
+      description: Client canceled the request (best-effort response; disconnected clients may receive no body)
       headers:
         Cache-Control: {$ref: '#/components/headers/NoStore'}
         X-Content-Type-Options: {$ref: '#/components/headers/NoSniff'}
       content:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}
-          example: {error: directory_unavailable}
+          example: {error: directory_canceled}
+    DirectoryRateLimited:
+      description: Per-source-IP burst exhausted; retry after token refill
+      headers:
+        Cache-Control: {$ref: '#/components/headers/NoStore'}
+        X-Content-Type-Options: {$ref: '#/components/headers/NoSniff'}
+        Retry-After:
+          description: Whole seconds until the next token is available (rounded up)
+          schema: {type: integer, minimum: 1}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          example: {error: directory_rate_limited}
+    DirectoryUnavailable:
+      description: Admission/client-table overload, request deadline, or scoped database timeout; safe distinct error codes
+      headers:
+        Retry-After:
+          description: Present for overload; one-second retry hint, not a capacity guarantee
+          schema: {type: integer, minimum: 1}
+        Cache-Control: {$ref: '#/components/headers/NoStore'}
+        X-Content-Type-Options: {$ref: '#/components/headers/NoSniff'}
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+          examples:
+            overload: {value: {error: directory_overloaded}}
+            deadline: {value: {error: directory_timeout}}
+            database: {value: {error: directory_database_timeout}}
     DiscoveryUnauthorized:
       description: Missing, invalid, expired or wrong-audience access token
       headers:

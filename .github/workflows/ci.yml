@@ -48,8 +48,8 @@ jobs:
           go-version-file: apps/api/go.mod
           cache-dependency-path: apps/api/go.sum
       - run: go mod download
-      - run: go test ./...
-      - run: go test -race ./...
+      - run: go test -count=1 ./...
+      - run: go test -race -count=1 ./...
       - run: go vet ./...
       - run: go build ./cmd/api
 
@@ -74,6 +74,13 @@ jobs:
     env:
       # Isolated CI fixture only; never use this cursor key in a shared deployment.
       DIRECTORY_CURSOR_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      DIRECTORY_REQUEST_TIMEOUT_MS: '2000'
+      DIRECTORY_STATEMENT_TIMEOUT_MS: '1500'
+      DIRECTORY_MAX_CONCURRENT: '8'
+      DIRECTORY_RATE_PER_MINUTE: '60'
+      DIRECTORY_BURST: '10'
+      DIRECTORY_MAX_CLIENTS: '10000'
+      DIRECTORY_CLIENT_TTL_SECONDS: '600'
       DATABASE_URL: postgres://alumnibridge:ci_test_only@127.0.0.1:5432/alumnibridge_ci?sslmode=disable
       TEST_DATABASE_URL: postgres://alumnibridge:ci_test_only@127.0.0.1:5432/alumnibridge_ci?sslmode=disable
       TEST_OBJECT_STORAGE_ENDPOINT: 127.0.0.1:19000

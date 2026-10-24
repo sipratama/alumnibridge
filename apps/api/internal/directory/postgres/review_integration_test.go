@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -68,9 +70,14 @@ func TestReviewLiteralPrefixNormalization(t *testing.T) {
 		t.Fatal(err)
 	}
 	router := chi.NewRouter()
-	directoryhttp.RegisterRoutes(router, directory.New(New(db), codec))
+	limits := directoryhttp.DefaultLimits()
+	limits.Burst = 1000
+	limits.ClientTTL = 20 * time.Minute
+	directoryhttp.RegisterRoutesWithLimits(router, directory.New(New(db), codec), limits, slog.Default())
 	for _, tc := range []struct{ name, value, query string }{
 		{"Indonesian spaces", "  Siti   Nur  ", "SITI NUR"},
+		{"ASCII whitespace fast path", " A\tB\nC\vD\fE\rF ", "a b c d e f"},
+		{"non-ASCII control whitespace", "A\u0085B", "a b"},
 		{"NBSP from onboarding", "Siti\u00a0\u00a0Nur", "siti nur"},
 		{"narrow Unicode spaces", "\u202fSiti\u2003Nur\u3000", "Siti Nur"},
 		{"accented Latin", "ÉLODIE André", "élodie"},
@@ -296,10 +303,16 @@ func TestReviewOwnerMembershipCatalog(t *testing.T) {
 	if _, err := db.Exec(ctx, `INSERT INTO memberships(user_id,study_program_id,role,status,graduation_year) SELECT $1,id,'alumni','verified',2020 FROM study_programs WHERE institution_id=$2 AND starts_with(slug,$3)`, owner, institution, prefix); err != nil {
 		t.Fatal(err)
 	}
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	started := time.Now()
 	state, err := profilepg.New(db).Discovery(ctx, owner)
+	elapsed := time.Since(started)
+	runtime.ReadMemStats(&after)
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Logf("301-choice catalog: elapsed=%s allocations=%d bytes (includes driver and JSON decode)", elapsed, after.TotalAlloc-before.TotalAlloc)
 	if len(state.Memberships) != 301 {
 		t.Fatalf("owner choices missing: %d", len(state.Memberships))
 	}
@@ -319,6 +332,12 @@ func TestReviewOwnerMembershipCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("301 verified private membership choices: %d JSON bytes", len(body))
+	started = time.Now()
+	u, err := identity.NewService(identitypg.New(db)).Me(ctx, identity.Principal{Subject: "audit-" + owner.String()})
+	if err != nil || len(u.Memberships) != 301 {
+		t.Fatal("identity membership loading mismatch", len(u.Memberships), err)
+	}
+	t.Logf("identity.Me also loads all 301 memberships: %s", time.Since(started))
 }
 
 func TestReviewInFlightPoolWaitCancellation(t *testing.T) {
@@ -348,7 +367,7 @@ func TestReviewInFlightPoolWaitCancellation(t *testing.T) {
 	defer cancel()
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, httptest.NewRequest("GET", "/directory", nil).WithContext(ctx))
-	if w.Code != 503 || w.Body.String() != "{\"error\":\"directory_unavailable\"}\n" || w.Header().Get("Cache-Control") != "no-store" || w.Header().Get("X-Content-Type-Options") != "nosniff" {
+	if w.Code != 503 || w.Body.String() != "{\"error\":\"directory_timeout\"}\n" || w.Header().Get("Cache-Control") != "no-store" || w.Header().Get("X-Content-Type-Options") != "nosniff" {
 		t.Fatalf("cancellation response: %d %v %s", w.Code, w.Header(), w.Body.String())
 	}
 }

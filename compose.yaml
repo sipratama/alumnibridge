@@ -6,6 +6,13 @@ services:
     environment:
       # Local development fallback only; replace with a generated random key for shared deployment.
       DIRECTORY_CURSOR_KEY: ${DIRECTORY_CURSOR_KEY:-L1vAgBrfwBBurWKc4D9fp3LXZEnC9h5Bq/HL7nVWLS8=}
+      DIRECTORY_REQUEST_TIMEOUT_MS: ${DIRECTORY_REQUEST_TIMEOUT_MS:-2000}
+      DIRECTORY_STATEMENT_TIMEOUT_MS: ${DIRECTORY_STATEMENT_TIMEOUT_MS:-1500}
+      DIRECTORY_MAX_CONCURRENT: ${DIRECTORY_MAX_CONCURRENT:-8}
+      DIRECTORY_RATE_PER_MINUTE: ${DIRECTORY_RATE_PER_MINUTE:-60}
+      DIRECTORY_BURST: ${DIRECTORY_BURST:-10}
+      DIRECTORY_MAX_CLIENTS: ${DIRECTORY_MAX_CLIENTS:-10000}
+      DIRECTORY_CLIENT_TTL_SECONDS: ${DIRECTORY_CLIENT_TTL_SECONDS:-600}
       API_PORT: 8080
       DATABASE_URL: postgres://${POSTGRES_USER:-alumnibridge}:${POSTGRES_PASSWORD:-local_dev_only_change_me}@postgres:5432/${POSTGRES_DB:-alumnibridge}?sslmode=disable
       OIDC_ISSUER: http://localhost:${KEYCLOAK_PORT:-18085}/realms/alumnibridge
