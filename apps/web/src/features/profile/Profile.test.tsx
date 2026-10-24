@@ -55,6 +55,7 @@ const profile: Profile = {
   current_company: '',
   current_job_title: '',
   completeness: 11,
+  __etag: '"ab-profile-v1"',
 }
 const privacy: Privacy = {
   visibility: 'private',
@@ -63,6 +64,7 @@ const privacy: Privacy = {
 let savedProfile: Profile
 let savedPrivacy: Privacy
 let privacyRevision: number
+let profileRevision: number
 let experiences: Record<string, unknown>[]
 let educations: Record<string, unknown>[]
 let skills: { id: string; name: string }[]
@@ -95,6 +97,7 @@ beforeEach(() => {
   savedProfile = { ...profile }
   savedPrivacy = { ...privacy }
   privacyRevision = 1
+  profileRevision = 1
   experiences = []
   educations = []
   skills = []
@@ -145,8 +148,17 @@ beforeEach(() => {
         })
       }
       if (path === '/users/me/profile') {
-        if (method === 'PATCH') savedProfile = { ...savedProfile, ...body }
-        return response(savedProfile)
+        if (method === 'PATCH') {
+          const expected = (init?.headers as Record<string, string> | undefined)?.['If-Match']
+          if (!expected) return response({ error: 'precondition_required' }, 428)
+          if (expected !== `"ab-profile-v${profileRevision}"`) return response({ error: 'stale_revision' }, 412)
+          savedProfile = { ...savedProfile, ...body }
+          profileRevision++
+        }
+        return new Response(JSON.stringify(savedProfile), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ETag: `"ab-profile-v${profileRevision}"` },
+        })
       }
       for (const [kind, list] of [
         ['experiences', experiences],
@@ -156,7 +168,7 @@ beforeEach(() => {
         if (path.startsWith(`/users/me/${kind}`)) {
           const id = path.split('/')[4]
           if (method === 'POST') {
-            const entry = { id: `new-${kind}`, ...body }
+            const entry = { id: `new-${kind}`, revision: 1, ...body }
             list.push(entry as never)
             return response(entry, 201)
           }
@@ -170,6 +182,7 @@ beforeEach(() => {
           if (method === 'PATCH') {
             const entry = list.find((item) => item.id === id)
             Object.assign(entry!, body)
+            if (entry) entry.revision = Number(entry.revision ?? 1) + 1
             return response(entry)
           }
           return response(list)
@@ -276,6 +289,7 @@ describe('owner professional profile', () => {
   })
   it('detects a changed dirty field in another session without overwriting it', async () => {
     savedProfile.headline = 'Changed elsewhere'
+    profileRevision = 2
     renderPage(
       <ProfileEditor profile={profile} onClose={vi.fn()} onSaved={vi.fn()} />,
     )
@@ -287,7 +301,7 @@ describe('owner professional profile', () => {
     expect(screen.getByLabelText('Professional headline')).toHaveValue(
       'My unsaved draft',
     )
-    expect(calls.filter((call) => call.method === 'PATCH')).toHaveLength(0)
+    expect(calls.filter((call) => call.method === 'PATCH')).toHaveLength(1)
   })
 })
 
