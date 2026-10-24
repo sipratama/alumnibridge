@@ -147,4 +147,4 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - run: git diff --check HEAD^ HEAD || true
+      - run: git diff --check HEAD^ HEAD
