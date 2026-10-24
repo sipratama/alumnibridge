@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { ApiError } from '@/shared/api/client'
 import { useOwnerQuery } from '@/features/profile/api'
 import { LoadError, Loading } from '@/features/profile/components'
+import { ConflictReview, type ConflictField } from '@/features/profile/ConflictReview'
 import {
   updateDiscovery,
   type AcademicConsent, type DiscoveryPatch, type DiscoverySettings,
@@ -16,30 +17,76 @@ function choices(settings: DiscoverySettings): AcademicConsent[] {
 
 export function DiscoveryPanel({ visibility }: { visibility: 'public' | 'private' }) {
   const query = useOwnerQuery<DiscoverySettings>('profile/discovery')
-  const [reloadKey, setReloadKey] = useState(0)
   if (query.isPending) return <Loading label="Loading directory discovery settings…" />
   if (query.error && (!query.data || (query.error instanceof ApiError && query.error.status === 401))) return <LoadError error={query.error} retry={() => void query.refetch()} />
-  return <>{query.error && <p className="profile-error" role="alert">Settings could not be refreshed. Your choices are preserved; retry before saving.</p>}<DiscoveryForm key={reloadKey} initial={query.data} visibility={visibility} onReload={() => { void query.refetch().then((result) => { if (result.data && !result.error) setReloadKey((key) => key + 1) }) }} /></>
+  return <>{query.error && <p className="profile-error" role="alert">Settings could not be refreshed. Your choices are preserved; retry before saving.</p>}<DiscoveryForm initial={query.data} visibility={visibility} onReload={async () => {
+    const result = await query.refetch()
+    if (result.error || !result.data) throw result.error || new Error('Discovery settings unavailable')
+    return result.data
+  }} /></>
 }
 
-function DiscoveryForm({ initial, visibility, onReload }: { initial: DiscoverySettings; visibility: 'public' | 'private'; onReload: () => void }) {
+function DiscoveryForm({ initial, visibility, onReload }: { initial: DiscoverySettings; visibility: 'public' | 'private'; onReload: () => Promise<DiscoverySettings> }) {
   const { getToken, user } = useAuth()
   const client = useQueryClient()
   const [draft, setDraft] = useState({ origin: initial, enabled: initial.directory_discoverable, affiliations: choices(initial) })
-  // Keep the snapshot, including its original ETag, until an explicit reload
-  // or a successful save. Background refetch must never silently rewrite a draft.
-  const active = draft
-  const { enabled, affiliations } = active
-  const saved = draft.origin
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>(null)
   const [message, setMessage] = useState('')
+  const [latest, setLatest] = useState<DiscoverySettings>()
+  const [reloadError, setReloadError] = useState(false)
+  // Only an untouched form can follow a fresh eligibility snapshot. Once an
+  // owner edits a choice, its original validator stays with that draft.
+  const pristine = draft.enabled === draft.origin.directory_discoverable && JSON.stringify(draft.affiliations) === JSON.stringify(choices(draft.origin))
+  const active = pristine && !busy && !latest && initial.__etag !== draft.origin.__etag
+    ? { origin: initial, enabled: initial.directory_discoverable, affiliations: choices(initial) }
+    : draft
+  const { enabled, affiliations } = active
+  const saved = active.origin
   const canOptIn = saved.eligible && visibility === 'public'
   function setFlag(id: string, flag: keyof Omit<AcademicConsent, 'membership_id'>, checked: boolean) {
     setDraft({ ...active, affiliations: affiliations.map((item) => item.membership_id === id ? {
       ...item, [flag]: checked,
       ...(flag === 'show_institution' && !checked ? { show_study_program: false, show_graduation_year: false } : {}),
     } : item) })
+  }
+  async function reloadLatest() {
+    try {
+      const current = await onReload()
+      if (!current.__etag) throw new ApiError(428, 'revision_missing')
+      setLatest(current)
+      setReloadError(false)
+    } catch { setReloadError(true) }
+  }
+  const conflicts: ConflictField[] = []
+  if (latest) {
+    if (enabled !== saved.directory_discoverable) conflicts.push({ key: 'enabled', label: 'Directory listing', original: saved.directory_discoverable, current: latest.directory_discoverable, draft: enabled })
+    for (const original of saved.memberships) {
+      const edited = affiliations.find((item) => item.membership_id === original.membership_id)
+      const current = latest.memberships.find((item) => item.membership_id === original.membership_id)
+      for (const flag of ['show_institution', 'show_study_program', 'show_graduation_year'] as const) {
+        if (edited && edited[flag] !== original[flag]) conflicts.push({ key: `${original.membership_id}:${flag}`, label: `${original.institution} · ${original.study_program}: ${flag.replaceAll('_', ' ')}`, original: original[flag], current: current?.[flag] ?? '(membership unavailable)', draft: edited[flag] })
+      }
+    }
+  }
+  function applySelected(selected: Set<string>) {
+    if (!latest) return
+    const merged = choices(latest).map((item) => ({ ...item }))
+    for (const field of conflicts) {
+      if (!selected.has(field.key) || field.key === 'enabled') continue
+      const [id, flag] = field.key.split(':') as [string, keyof Omit<AcademicConsent, 'membership_id'>]
+      const target = merged.find((item) => item.membership_id === id)
+      const edited = affiliations.find((item) => item.membership_id === id)
+      if (target && edited) target[flag] = edited[flag]
+    }
+    for (const item of merged) {
+      if (!item.show_institution) { item.show_study_program = false; item.show_graduation_year = false }
+    }
+    const nextEnabled = selected.has('enabled') && latest.eligible && visibility === 'public' ? enabled : latest.directory_discoverable
+    setDraft({ origin: latest, enabled: nextEnabled, affiliations: merged })
+    setLatest(undefined)
+    setError(null)
+    setMessage('Review the updated draft, then save if it reflects your choice.')
   }
   async function save(event: React.FormEvent) {
     event.preventDefault()
@@ -65,7 +112,10 @@ function DiscoveryForm({ initial, visibility, onReload }: { initial: DiscoverySe
       client.removeQueries({ queryKey: ['directory'] })
       client.removeQueries({ queryKey: ['public-profile'] })
       await client.invalidateQueries({ queryKey: ['professional', user?.id, 'profile/discovery'] })
-    } catch (failure) { setError(failure) } finally { setBusy(false) }
+    } catch (failure) {
+      setError(failure)
+      if (failure instanceof ApiError && failure.status === 412) void reloadLatest()
+    } finally { setBusy(false) }
   }
   const errorText = error instanceof ApiError ?
     error.status === 412 || error.code === 'discovery_changed' ? 'Discovery settings changed in another session. Your draft is preserved. Reload and review before saving again.' :
@@ -100,8 +150,10 @@ function DiscoveryForm({ initial, visibility, onReload }: { initial: DiscoverySe
           })}
       </fieldset>
       {error !== null && <p className="profile-error" role="alert">{errorText}</p>}
+      {latest && <ConflictReview key={latest.__etag} fields={conflicts} onApply={applySelected} />}
+      {reloadError && <p className="profile-error" role="alert">Current discovery settings could not be loaded. Your draft is preserved.</p>}
       {message && <p className="profile-success" role="status">{message}</p>}
-      <div className="form-actions"><Button disabled={busy}>{busy ? 'Saving…' : 'Save discovery settings'}</Button><Button type="button" variant="outline" disabled={busy} onClick={onReload}>Reload settings</Button></div>
+      <div className="form-actions"><Button disabled={busy || !!latest}>{busy ? 'Saving…' : 'Save discovery settings'}</Button><Button type="button" variant="outline" disabled={busy} onClick={() => void reloadLatest()}>Reload settings</Button></div>
     </form>
   </section>
 }

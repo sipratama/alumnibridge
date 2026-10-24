@@ -907,3 +907,21 @@ button:disabled {
 .public-story.is-revalidating {
   height: var(--public-story-height, auto);
 }
+.conflict-review {
+  margin-block: 1rem;
+  padding: 1rem;
+  border: 1px solid #d0a56b;
+  border-radius: 0.75rem;
+  background: #fffaf1;
+}
+
+.conflict-review h3 { margin-top: 0; }
+.conflict-field { padding-block: 0.75rem; border-top: 1px solid #e8ddce; }
+.conflict-field label { display: flex; gap: 0.5rem; align-items: center; font-weight: 600; }
+.conflict-field dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; margin: 0.5rem 0 0; }
+.conflict-field dt { font-size: 0.8rem; color: #5d665f; }
+.conflict-field dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+
+@media (max-width: 640px) {
+  .conflict-field dl { grid-template-columns: 1fr; }
+}

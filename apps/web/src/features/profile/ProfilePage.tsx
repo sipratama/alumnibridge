@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { ArrowRight, LockKeyhole, MapPin, Pencil, Globe2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/app/authContext'
+import { ApiError } from '@/shared/api/client'
 import { useOwnerQuery, type Privacy, type Profile } from './api'
 import { Feedback, LoadError, Loading, Verification } from './components'
 import { ProfileEditor } from './ProfileEditor'
@@ -19,7 +20,7 @@ export function ProfilePage() {
   const [editing, setEditing] = useState(false)
   const [saved, setSaved] = useState(false)
   if (profile.isPending) return <Loading />
-  if (profile.error)
+  if (profile.error && (!profile.data || (profile.error instanceof ApiError && profile.error.status === 401)))
     return (
       <LoadError error={profile.error} retry={() => void profile.refetch()} />
     )
@@ -42,6 +43,7 @@ export function ProfilePage() {
           Manage privacy
         </Link>
       </div>
+      {profile.error && <p role="alert" className="profile-error">Profile could not be refreshed. Your open draft is preserved.</p>}
       <div className="profile-columns">
         <div className="profile-content">
           <section
@@ -101,6 +103,12 @@ export function ProfilePage() {
                 name={p.display_name}
                 src={photo?.url}
                 error={photo?.error}
+                etag={p.__etag}
+                reloadProfile={async () => {
+                  const result = await profile.refetch()
+                  if (result.error) throw result.error
+                  return result.data
+                }}
               />
             </div>
           </section>

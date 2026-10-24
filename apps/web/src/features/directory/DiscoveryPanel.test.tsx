@@ -47,6 +47,26 @@ beforeEach(() => {
 afterEach(() => { cleanup(); client?.clear(); vi.unstubAllGlobals() })
 
 describe('owner discovery consent', () => {
+  it('refreshes untouched eligibility after publication without replacing an edited draft', async () => {
+    settings.eligible = false
+    mount()
+    const toggle = await screen.findByRole('checkbox', { name: /Include my profile/ })
+    expect(toggle).toBeDisabled()
+    settings = { ...settings, eligible: true }
+    revision++
+    await act(async () => { await client.invalidateQueries({ queryKey: ['professional', 'owner', 'profile/discovery'] }) })
+    await waitFor(() => expect(toggle).toBeEnabled())
+    fireEvent.click(toggle)
+    settings = { ...settings, directory_discoverable: false }
+    revision++
+    await act(async () => { await client.invalidateQueries({ queryKey: ['professional', 'owner', 'profile/discovery'] }) })
+    expect(toggle).toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: 'Save discovery settings' }))
+    expect(await screen.findByRole('region', { name: 'Review current server values' })).toBeInTheDocument()
+    const patches = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'PATCH')
+    expect(patches).toHaveLength(1)
+    expect((patches[0][1]?.headers as Record<string, string> | undefined)?.['If-Match']).toBe('"ab-privacy-v2"')
+  })
   it('rejects stale draft via original If-Match and retains unsaved choices', async () => {
     mount()
     fireEvent.click(await screen.findByRole('checkbox', { name: /Include my profile/ }))
@@ -59,8 +79,10 @@ describe('owner discovery consent', () => {
     expect(screen.getByRole('checkbox', { name: /Include my profile/ })).toBeChecked()
     expect(settings.directory_discoverable).toBe(false)
     fireEvent.click(screen.getByRole('button', { name: 'Reload settings' }))
-    await waitFor(() => expect(screen.getByRole('checkbox', { name: /Include my profile/ })).not.toBeChecked())
-    fireEvent.click(screen.getByRole('checkbox', { name: /Include my profile/ }))
+    expect(await screen.findByRole('region', { name: 'Review current server values' })).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: /Include my profile/ })).toBeChecked()
+    expect(screen.getByRole('button', { name: 'Save discovery settings' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Apply selected edits to latest draft' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save discovery settings' }))
     await screen.findByText(/can now appear/)
     const retryCall = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'PATCH')[1]

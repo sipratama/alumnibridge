@@ -13,6 +13,7 @@ import {
   type Profile,
 } from './api'
 import { Feedback, LoadError, Loading } from './components'
+import { ConflictReview, type ConflictField } from './ConflictReview'
 import { DiscoveryPanel } from '@/features/directory/DiscoveryPanel'
 
 export function PrivacyPage() {
@@ -72,6 +73,33 @@ function PrivacyForm({ initial, slug, onReload }: { initial: Privacy; slug: stri
   })
   const needsConsent =
     saved.visibility === 'private' && values.visibility === 'public'
+  async function reloadLatest() {
+    try {
+      const current = await onReload()
+      if (!current.__etag) throw new ApiError(428, 'revision_missing')
+      setLatest(current)
+      setReloadError(false)
+    } catch {
+      setReloadError(true)
+    }
+  }
+  const fields: ConflictField[] = latest
+    ? ([['visibility', 'Profile visibility'], ...Object.entries(privacyFields)] as Array<[keyof Privacy, string]>)
+      .filter(([key]) => values[key] !== saved[key])
+      .map(([key, label]) => ({ key, label, original: saved[key], current: latest[key], draft: values[key] }))
+    : []
+  function applySelected(selected: Set<string>) {
+    if (!latest) return
+    const next = { ...latest }
+    for (const field of fields) {
+      if (selected.has(field.key)) (next as Record<string, unknown>)[field.key] = values[field.key as keyof Privacy]
+    }
+    setSaved(latest)
+    setValues(next)
+    setConsent(false)
+    setLatest(undefined)
+    mutation.reset()
+  }
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     setMessage('')
@@ -102,8 +130,9 @@ function PrivacyForm({ initial, slug, onReload }: { initial: Privacy; slug: stri
           ? 'Profile is private. New anonymous requests cannot access it.'
           : 'Privacy settings saved. Use the public view to check what visitors can see.',
       )
-    } catch {
+    } catch (error) {
       /* Preserve consent and choices for retry. */
+      if (error instanceof ApiError && error.status === 412) void reloadLatest()
     }
   }
   return (
@@ -203,29 +232,13 @@ function PrivacyForm({ initial, slug, onReload }: { initial: Privacy; slug: stri
           ) : (
             <Feedback error={mutation.error} message={message} />
           )}
-        {latest && (
-          <div role="status" className="consent-box">
-            <p>Current saved visibility: <strong>{latest.visibility}</strong>. Review your draft above before choosing which settings to keep.</p>
-            <p>Current optional fields: {Object.entries(privacyFields)
-              .filter(([key]) => latest[key as keyof typeof privacyFields])
-              .map(([, label]) => label).join(', ') || 'none'}.</p>
-            <Button type="button" variant="outline" onClick={() => {
-              setSaved(latest)
-              setValues(latest)
-              setConsent(false)
-              setLatest(undefined)
-              mutation.reset()
-            }}>
-              Use current saved settings
-            </Button>
-          </div>
-        )}
+        {latest && <ConflictReview key={latest.__etag} fields={fields} onApply={applySelected} />}
         {reloadError && <p role="alert" className="profile-error">Could not reload current settings. Your draft is preserved.</p>}
         <div className="form-actions">
           <Button type="button" variant="outline" disabled={mutation.isPending} onClick={() => {
-            void onReload().then((result) => { setLatest(result); setReloadError(false) }).catch(() => setReloadError(true))
+            void reloadLatest()
           }}>Reload current settings</Button>
-            <Button disabled={mutation.isPending}>
+            <Button disabled={mutation.isPending || !!latest}>
               {mutation.isPending ? 'Saving…' : 'Save privacy settings'}
             </Button>
           </div>
