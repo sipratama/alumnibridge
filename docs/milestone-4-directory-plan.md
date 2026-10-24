@@ -1,10 +1,10 @@
 # Milestone 4 — Alumni Directory & Discovery
 
 Date: 2026-10-24 (Asia/Jakarta).
-Status: **Phase A approved; Phase B backend implemented and awaiting review**.
+Status: **Phase B remediation approved; Phase C hardening implemented locally and awaiting review**.
 
-Current implementation/test evidence: [Phase B backend](milestone-4-phase-b-backend.md). The repository/GitHub observations below record the original Phase A alignment.
-Recommendation: **READY FOR PHASE B REVIEW**. Phase C/D/E remain unstarted; this is not production approval.
+Current implementation/test evidence: [Phase B backend](milestone-4-phase-b-backend.md) and [Phase C hardening](milestone-4-phase-c-hardening.md). The repository/GitHub observations below record the original Phase A alignment.
+Recommendation: **READY FOR PHASE C REVIEW**. See [Phase C evidence](milestone-4-phase-c-hardening.md). Phase D/E remain unstarted; this is not production approval.
 
 ## Objective and documents
 
@@ -92,4 +92,4 @@ Executed documentation checks:
 
 Local application unit/build/lint, runtime, database, application-browser E2E, Windows/Podman and screen-reader tests are **not run in Phase A**; the master CI and M3 reports are separately attributed evidence. Rendering the documentation diagram is not an application browser test. No container, network, volume, database or verification state is changed.
 
-The maintainer approved the Phase A eligibility/academic consent policy and contracts; Phase B now implements the backend foundation. Phase B review is required before Phase C. Conditions before milestone merge: full implemented tests/review/CI and resolution or explicit acceptance of remaining platform/accessibility gaps. Conditions before production: atomic concurrency #11, trusted verification/moderation operations, evaluated branch protection #10, measured abuse controls, production OIDC/TLS/storage/secret policy, consent/legal/retention and backup/restore gates. Empty inventory is acceptable until genuine verified memberships exist; do not weaken verification to fill the directory.
+The maintainer approved the Phase A eligibility/academic consent policy and contracts; Phase B now implements the backend foundation. Phase B review and approval preceded Phase C; Phase C now awaits review. Conditions before milestone merge: full implemented tests/review/CI and resolution or explicit acceptance of remaining platform/accessibility gaps. Conditions before production: atomic concurrency #11, trusted verification/moderation operations, evaluated branch protection #10, measured abuse controls, production OIDC/TLS/storage/secret policy, consent/legal/retention and backup/restore gates. Empty inventory is acceptable until genuine verified memberships exist; do not weaken verification to fill the directory.
