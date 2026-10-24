@@ -24,7 +24,7 @@ function App() {
             <a href="#community">Community</a>
             <a href="#how-it-works">How it works</a>
           </nav>
-          <div className="header-action">{status === 'authenticated' ? <><Link className="text-link" to="/account">My account</Link><Button variant="outline" onClick={() => void logout()}>Sign out</Button></> : <Button variant="outline" onClick={() => void login()} disabled={status === 'loading' || status === 'error'}>Sign in</Button>}</div>
+          <div className="header-action">{status === 'authenticated' ? <><Link className="text-link" to="/dashboard">My home</Link><Button variant="outline" onClick={() => void logout()}>Sign out</Button></> : <Button variant="outline" onClick={() => void login()} disabled={status === 'loading' || status === 'error'}>Sign in</Button>}</div>
           <a className="mobile-menu" href="#about" aria-label="Skip to about section"><Menu size={22} /></a>
         </div>
       </header>
@@ -36,7 +36,7 @@ function App() {
             <h1 id="hero-title">Your next chapter starts with <em>who you know.</em></h1>
             <p className="hero-description">A place for students and alumni to share experience, explore career paths, and stay connected to the community that shaped them.</p>
             <div className="hero-actions">
-              {status === 'authenticated' ? <Link className="join-link" to="/onboarding">Continue your journey <ArrowRight size={17} /></Link> : <Button size="lg" onClick={() => void register()} disabled={status === 'loading' || status === 'error'}>Join the community <ArrowRight size={17} /></Button>}
+              {status === 'authenticated' ? <Link className="join-link" to="/profile">Your professional profile <ArrowRight size={17} /></Link> : <Button size="lg" onClick={() => void register()} disabled={status === 'loading' || status === 'error'}>Join the community <ArrowRight size={17} /></Button>}
               <a className="text-link" href="#about">Get to know us <ArrowRight size={17} /></a>
             </div>
             {status === 'loading' && <p className="auth-note" role="status">Checking your sign-in status…</p>}
@@ -64,7 +64,7 @@ function App() {
           <div className="feature-grid">{areas.map(({ icon: Icon, label, detail }, index) => <article className="feature-card" key={label}><span className="feature-number">0{index + 1}</span><div className="feature-icon"><Icon size={24} strokeWidth={1.8} /></div><h3>{label}</h3><p>{detail}</p></article>)}</div>
         </section>
 
-        <section className="coming-section" id="how-it-works"><div className="container coming-inner"><div><span className="section-kicker">WHAT'S AHEAD</span><h2>A network built around <em>possibility.</em></h2><p>Public alumni discovery, professional profiles, and thoughtful ways to connect are on the roadmap. We are laying the foundation now.</p></div><div className="preview-card"><div className="preview-top"><span><Search size={18} /> Alumni discovery</span><span className="preview-pill">COMING SOON</span></div><div className="preview-line long" /><div className="preview-line medium" /><div className="preview-line short" /><div className="preview-footer"><span className="preview-circle" /><span className="preview-circle" /><span className="preview-circle" /><span>Find a path worth exploring</span></div></div></div></section>
+        <section className="coming-section" id="how-it-works"><div className="container coming-inner"><div><span className="section-kicker">WHAT'S AHEAD</span><h2>A network built around <em>possibility.</em></h2><p>Professional profiles are here. Share your story on your terms while alumni discovery and ways to connect take shape.</p></div><div className="preview-card"><div className="preview-top"><span><Search size={18} /> Alumni discovery</span><span className="preview-pill">COMING SOON</span></div><div className="preview-line long" /><div className="preview-line medium" /><div className="preview-line short" /><div className="preview-footer"><span className="preview-circle" /><span className="preview-circle" /><span className="preview-circle" /><span>Find a path worth exploring</span></div></div></div></section>
       </main>
 
       <footer className="site-footer"><div className="container footer-inner"><a className="brand" href="#top"><span className="brand-mark" aria-hidden="true"><span /><span /><span /></span><span>Alumni<span className="brand-accent">Bridge</span></span></a><p>From a shared beginning, toward new opportunities.</p><span>Made for a connected future.</span></div></footer>
