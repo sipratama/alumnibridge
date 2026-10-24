@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/app/authContext'
 import { apiRequest, apiResponse, request, versionedRequest, ApiError, type WithETag } from '@/shared/api/client'
 
-export type Profile = {
+export type Profile = WithETag & {
   display_name: string
   slug: string
   headline: string
@@ -12,7 +12,7 @@ export type Profile = {
   current_job_title: string
   completeness: number
 }
-export type ProfileInput = Omit<Profile, 'completeness'>
+export type ProfileInput = Omit<Profile, 'completeness' | '__etag'>
 export type ExperienceInput = {
   company: string
   job_title: string
@@ -23,7 +23,7 @@ export type ExperienceInput = {
   is_current: boolean
   description: string
 }
-export type Experience = ExperienceInput & { id: string }
+export type Experience = ExperienceInput & { id: string; revision: number }
 export type EducationInput = {
   institution: string
   degree: string
@@ -32,7 +32,7 @@ export type EducationInput = {
   end_date?: string | null
   description: string
 }
-export type Education = EducationInput & { id: string }
+export type Education = EducationInput & { id: string; revision: number }
 export type Skill = { id: string; name: string }
 export const privacyFields = {
   show_bio: 'About',
@@ -69,7 +69,7 @@ export function useOwnerQuery<T>(resource: string) {
   return useQuery({
     queryKey: ['professional', user?.id, resource],
     queryFn: ({ signal }) =>
-      resource === 'profile/privacy' || resource === 'profile/discovery'
+      resource === 'profile' || resource === 'profile/privacy' || resource === 'profile/discovery'
         ? versionedRequest(`${ownerPath}/${resource}`, getToken, { signal }) as Promise<T>
         : request<T>(`${ownerPath}/${resource}`, getToken, { signal }),
     retry: false,
