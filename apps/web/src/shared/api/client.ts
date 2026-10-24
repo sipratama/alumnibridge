@@ -42,6 +42,25 @@ export async function request<T>(
   })
 }
 
+// Owner ETags stay out of JSON; preserving them on the exact fetched object
+// ensures a draft submits the validator it originally observed.
+export type WithETag = { readonly __etag?: string }
+export async function versionedRequest<T extends object>(
+  path: string,
+  getToken: () => Promise<string>,
+  init?: RequestInit,
+): Promise<T & WithETag> {
+  const token = await getToken()
+  const response = await apiResponse(path, {
+    ...init,
+    headers: { ...init?.headers, Authorization: `Bearer ${token}` },
+  })
+  const body = (await response.json()) as T & WithETag
+  const etag = response.headers.get('ETag')
+  if (etag) Object.defineProperty(body, '__etag', { value: etag, enumerable: false })
+  return body
+}
+
 export async function apiResponse(
   path: string,
   init?: RequestInit,
