@@ -82,10 +82,9 @@ func (h *Handler) updatePrivacy(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	expected, conditionalErr := parseExpectedRevision(r,"privacy")
- if conditionalErr == errInvalidPrecondition {fail(w,profiles.ErrInvalid);return}
- var out profiles.Privacy
- if conditionalErr == errMissingPrecondition {out,err = h.publication.UpdatePrivacy(r.Context(),u,p)} else {out,err = h.publication.UpdatePrivacyConditional(r.Context(),u,p,expected)}
+	expected, conditionalErr := requireRevision(r, "privacy")
+ if conditionalErr != nil {fail(w, conditionalErr);return}
+ out, err := h.publication.UpdatePrivacyConditional(r.Context(),u,p,expected)
 	if err != nil {
 		fail(w, err)
 		return
