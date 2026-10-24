@@ -21,3 +21,5 @@ Each milestone should leave a runnable, reviewable slice. Write small changes, a
 Milestones 1 and 2, plus authentication verification/hardening, are complete. Milestone 3 is Professional Profile. Phase A covered GitHub project setup, branch creation, domain/API design and database schema. Phase B implements owner-only profile, experience, education, and skills. Phase C implements public profile reads, photo storage, privacy and moderation boundaries. Phase D now integrates the owner editors, photo/privacy controls and anonymous public profile UI. Milestone 3 awaits final user review; see [Phase D evidence](phase-d-professional-profile-frontend.md). Runtime/CI and sqlc generation policy remain follow-up work outside this milestone.
 
 Before public launch, review the production storage and moderation conditions in [phase-c-profile-privacy.md](phase-c-profile-privacy.md). Alumni proof/retention and OIDC deployment topology remain open before their respective release work.
+
+Milestone 3 final review: [development merge assessment and production gates](reviews/milestone-3-final-review.md). The final review does not authorize a merge or start Milestone 4.

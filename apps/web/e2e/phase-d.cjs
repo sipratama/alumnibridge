@@ -68,6 +68,11 @@ async function run() {
       })
       const page = await context.newPage()
       page.setDefaultTimeout(15000)
+      let observedToken
+      page.on('request', (req) => {
+        if (req.url().includes('/api/v1/') && req.headers().authorization)
+          observedToken = req.headers().authorization
+      })
       const errors = []
       page.on('pageerror', (error) => errors.push(error.message))
       await page.goto(base)
@@ -227,6 +232,41 @@ async function run() {
         .setInputFiles({ name: 'demo.png', mimeType: 'image/png', buffer: png })
       await page.getByRole('button', { name: 'Save photo' }).click()
       await page.getByText('Photo saved.', { exact: true }).waitFor()
+      const photoBefore = await page.request.get(
+        base + '/api/v1/users/me/profile/photo',
+        { headers: { Authorization: observedToken } },
+      )
+      assert(photoBefore.status() === 200, 'Owner photo read failed')
+      const oldPixels = await photoBefore.body()
+      const replacement = Buffer.from(
+        await page.evaluate(() => {
+          const canvas = document.createElement('canvas')
+          canvas.width = 80
+          canvas.height = 80
+          const ctx = canvas.getContext('2d')
+          ctx.fillStyle = '#28644e'
+          ctx.fillRect(0, 0, 80, 80)
+          return canvas.toDataURL('image/png').split(',')[1]
+        }),
+        'base64',
+      )
+      await page.getByLabel('Profile photo file').setInputFiles({
+        name: 'replacement.png',
+        mimeType: 'image/png',
+        buffer: replacement,
+      })
+      await page.getByRole('button', { name: 'Save photo' }).click()
+      await page.getByText('Photo saved.', { exact: true }).waitFor()
+      const photoAfter = await page.request.get(
+        base + '/api/v1/users/me/profile/photo',
+        { headers: { Authorization: observedToken } },
+      )
+      assert(
+        photoAfter.status() === 200 &&
+          !oldPixels.equals(await photoAfter.body()),
+        'Photo replacement did not change controlled bytes',
+      )
+
       if (role === 'student') {
         await page.addStyleTag({
           content: 'html { scroll-behavior: auto !important; }',
@@ -395,11 +435,88 @@ async function run() {
         .getByRole('button', { name: 'Remove entry', exact: true })
         .click()
       await page.getByText('Photo removed.', { exact: true }).waitFor()
+      if (role === 'student' && process.env.VERIFY_API_RESTART === 'true') {
+        const meResponse = await page.request.get(base + '/api/v1/auth/me', {
+          headers: { Authorization: observedToken },
+        })
+        assert(
+          meResponse.status() === 200,
+          'Could not resolve synthetic owner for restart check',
+        )
+        const owner = (await meResponse.json()).id
+        assert(/^[0-9a-f-]{36}$/.test(owner), 'Invalid synthetic owner UUID')
+        const pending = () =>
+          Number(
+            execFileSync(
+              cli,
+              [
+                'compose',
+                '-p',
+                'alumnibridge',
+                'exec',
+                '-T',
+                'postgres',
+                'psql',
+                '-U',
+                'alumnibridge',
+                '-d',
+                'alumnibridge',
+                '-At',
+                '-c',
+                `SELECT count(*) FROM profile_photo_objects WHERE owner_id='${owner}'`,
+              ],
+              { encoding: 'utf8' },
+            ).trim(),
+          )
+        if (pending() === 0) {
+          await page
+            .getByLabel('Profile photo file')
+            .setInputFiles({
+              name: 'restart.png',
+              mimeType: 'image/png',
+              buffer: replacement,
+            })
+          await page.getByRole('button', { name: 'Save photo' }).click()
+          await page.getByText('Photo saved.', { exact: true }).waitFor()
+          await page
+            .getByRole('button', { name: 'Delete profile photo' })
+            .click()
+          await page
+            .getByRole('button', { name: 'Remove entry', exact: true })
+            .click()
+          await page.getByText('Photo removed.', { exact: true }).waitFor()
+        }
+        assert(pending() > 0, 'No durable photo job exists to verify restart')
+        execFileSync(cli, ['compose', '-p', 'alumnibridge', 'restart', 'api'], {
+          stdio: 'ignore',
+        })
+        console.log(
+          'Actual API process restarted with synthetic pending cleanup',
+        )
+        for (let attempt = 0; pending() > 0 && attempt < 24; attempt++)
+          await new Promise((resolve) => setTimeout(resolve, 2500))
+        assert(
+          pending() === 0,
+          'Restarted worker did not collect synthetic photo jobs',
+        )
+        console.log(
+          'Actual API process restart and durable cleanup recovery PASSED',
+        )
+      }
+
       await page.getByRole('button', { name: 'Delete experience 1' }).click()
       await page
         .getByRole('button', { name: 'Remove entry', exact: true })
         .click()
       await page.getByText(/Every path starts somewhere/).waitFor()
+      await page.getByRole('dialog').waitFor({ state: 'hidden' })
+      assert(
+        await page
+          .getByRole('button', { name: 'Add experience' })
+          .evaluate((el) => el === document.activeElement),
+        'Deletion did not restore focus to its section action',
+      )
+
       await page.getByRole('button', { name: 'Delete education 1' }).click()
       await page
         .getByRole('button', { name: 'Remove entry', exact: true })
@@ -441,7 +558,7 @@ async function run() {
         .waitFor()
       assert(!errors.length, `Browser errors: ${errors.join('; ')}`)
       console.log(
-        `${role}: registration/onboarding, profile edits, experience/education CRUD, skills, photo, explicit consent, anonymous privacy, historical slug, refresh, logout and login restoration PASSED`,
+        `${role}: registration/onboarding, profile edits, experience/education CRUD, skills, photo upload/replacement/deletion, explicit consent, anonymous privacy, historical slug, refresh, logout and login restoration PASSED`,
       )
       await context.close()
     }

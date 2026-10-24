@@ -2,7 +2,7 @@
 
 AlumniBridge is an open-source professional network for university students and alumni. The first community is Mathematics Education at UHAMKA, Indonesia. The design allows additional universities and study programs later.
 
-The current milestone includes a Go API, a React web app, PostgreSQL, and a dedicated local Keycloak realm for sign-in and student/alumni onboarding. The backend also supports owner profile management, explicitly public profiles, privacy controls and controlled photo delivery. The profile UI and public directory remain future work.
+The current milestone includes a Go API, a React web app, PostgreSQL, and a dedicated local Keycloak realm for sign-in and student/alumni onboarding. The backend also supports owner profile management, explicitly public profiles, privacy controls and controlled photo delivery. The professional profile UI is implemented; the public alumni directory remains future work.
 
 ## Requirements
 
@@ -61,37 +61,13 @@ npm run dev
 Pop-Location
 ```
 
-The web app is at `http://localhost:5173`; Keycloak is at `http://localhost:18085`; API liveness is `http://localhost:8080/health`; readiness is `http://localhost:8080/ready`. Create an account from the web app's **Create account** button, then select Student or Alumni. Alumni memberships start as `pending`; administrator review is a later milestone. Keycloak's local admin console uses username `localadmin` and password `local_admin_only` from `.env.example`. The browser uses Authorization Code Flow with PKCE; the API validates Keycloak access tokens and never accepts a client-supplied user ID. The example client redirects only to `http://localhost:5173/`. Set `VITE_OIDC_CALLBACK_URI` to this exact URI, including the trailing slash. Existing Keycloak databases are not updated by realm import: in the Keycloak Admin Console, inspect **Clients → alumnibridge-web → Settings → Valid redirect URIs** and set the sole value to `http://localhost:5173/` if it differs. Keep **Web origins** at `http://localhost:5173`. The API does not load `.env` itself: set its environment variables in the process as shown above. If you use `.env`, update the commands and corresponding application environment values together.
+The web app is at `http://localhost:5173`; Keycloak is at `http://localhost:18085`; API liveness is `http://localhost:8080/health`; readiness is `http://localhost:8080/ready`. Create an account from the web app's **Join the community** button, then select Student or Alumni. Alumni memberships start as `pending`; administrator review is a later milestone. Keycloak's local admin console uses username `localadmin` and password `local_admin_only` from `.env.example`. The browser uses Authorization Code Flow with PKCE; the API validates Keycloak access tokens and never accepts a client-supplied user ID. The example client redirects only to `http://localhost:5173/`. Set `VITE_OIDC_CALLBACK_URI` to this exact URI, including the trailing slash. Existing Keycloak databases are not updated by realm import: in the Keycloak Admin Console, inspect **Clients → alumnibridge-web → Settings → Valid redirect URIs** and set the sole value to `http://localhost:5173/` if it differs. Keep **Web origins** at `http://localhost:5173`. The API does not load `.env` itself: set its environment variables in the process as shown above. If you use `.env`, update the commands and corresponding application environment values together.
 
 ## Checks
 
-```powershell
-$env:DATABASE_URL = 'postgres://alumnibridge:local_dev_only_change_me@127.0.0.1:5432/alumnibridge?sslmode=disable'
-Push-Location apps/api
-go test ./...
-go build ./cmd/api
-$env:TEST_DATABASE_URL = $env:DATABASE_URL
-go test ./internal/identity/postgres -count=1
-Remove-Item Env:TEST_DATABASE_URL
-Pop-Location
+Run backend unit/race/vet/build checks, frontend test/build/lint, and PostgreSQL/MinIO integration against an isolated disposable database. Profile integration tests install failure-injection triggers; never point `TEST_DATABASE_URL` at a development or production database with active users.
 
-Push-Location apps/web
-npm ci
-npm run test
-npm run build
-Pop-Location
-
-podman compose -p alumnibridge --env-file .env.example ps
-podman compose -p alumnibridge --env-file .env.example exec -T postgres psql -U alumnibridge -d alumnibridge -c 'SELECT 1;'
-$env:PGPASSWORD = 'local_dev_only_change_me'
-psql -h 127.0.0.1 -p 5432 -U alumnibridge -d alumnibridge -At -c 'SELECT 1;'
-Remove-Item Env:PGPASSWORD
-Invoke-RestMethod http://localhost:8080/health
-Invoke-RestMethod http://localhost:8080/ready
-try { Invoke-WebRequest http://localhost:8080/api/v1/auth/me } catch { [int]$_.Exception.Response.StatusCode }
-```
-
-The final command should print `401` without a bearer token. The OpenAPI contract is at [apps/api/openapi/openapi.yaml](apps/api/openapi/openapi.yaml). To stop only AlumniBridge services: `podman compose -p alumnibridge --env-file .env.example stop postgres keycloak-db keycloak minio`. This retains both databases' volumes. Do not use broad Podman cleanup commands on a shared workstation.
+See [Windows PowerShell verification](docs/windows-verification.md) for exact, project-scoped service, migration, isolated-test and browser commands. These commands were reviewed on macOS during the Milestone 3 final review; this is not a claim that Windows/Podman execution passed. The [final review report](docs/reviews/milestone-3-final-review.md) records executed results and limitations.
 
 ## Project documents
 
@@ -99,6 +75,8 @@ The final command should print `401` without a bearer token. The OpenAPI contrac
 - [Architecture and proposed repository layout](docs/architecture.md)
 - [Implementation plan](docs/implementation-plan.md)
 - [Contributor and agent conventions](AGENTS.md)
+- [Professional profile frontend and screenshots](docs/phase-d-professional-profile-frontend.md)
+- [Milestone 3 final review](docs/reviews/milestone-3-final-review.md)
 
 ## Local profile photo storage
 
@@ -106,6 +84,6 @@ Compose builds a dedicated MinIO instance with the `alumnibridge_minio_data` vol
 
 The MinIO server is built from published community release `RELEASE.2025-10-15T17-29-55Z`, pinned source commit `9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a`. Official registry images were unavailable during implementation. The first build downloads and compiles that source. This archived community release is for isolated local development; assess a maintained S3-compatible deployment before production. The application depends only on its replaceable storage port. Sources: [MinIO server](https://github.com/minio/minio), [Go SDK](https://github.com/minio/minio-go).
 
-The API creates a private `alumnibridge-profile-photos` bucket and refuses buckets with anonymous access policies. Upload raw JPEG/PNG/WebP bytes to `POST /api/v1/users/me/profile/photo` with the matching Content-Type, up to 5 MiB. The API normalizes pixels, strips metadata, and returns its own read URL. Object keys and signed object URLs are never returned. Owner reads require authentication; public reads require public visibility, visible moderation status, and `show_photo=true`. No profile UI is included yet.
+The API creates a private `alumnibridge-profile-photos` bucket and refuses buckets with anonymous access policies. Upload raw JPEG/PNG/WebP bytes to `POST /api/v1/users/me/profile/photo` with the matching Content-Type, up to 5 MiB. The API normalizes pixels, strips metadata, and returns its own read URL. Object keys and signed object URLs are never returned. Owner reads require authentication; public reads require public visibility, visible moderation status, and `show_photo=true`. Members manage profiles at `/profile`, privacy at `/settings/privacy`, and explicitly public profiles are available anonymously at `/in/:slug`.
 
 A cleanup worker runs every minute, deleting at most 20 obsolete objects per sweep. Failed uploads/activations remain registered and expire after 15 minutes; failed deletes retain retry intent. Removal revokes API access immediately while storage deletion may retry later. Keep database and object storage backups consistent. See [Phase C design and verification](docs/phase-c-profile-privacy.md).

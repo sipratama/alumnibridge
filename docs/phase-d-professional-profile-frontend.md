@@ -157,3 +157,7 @@ Retained screenshot evidence (all synthetic): [owner desktop](screenshots/phase-
 - `.gitignore`: exclude generated local `.impeccable/review/` captures; retained evidence lives in documentation.
 
 **Verdict: READY FOR MILESTONE 3 FINAL REVIEW.** This is readiness for user review of the local implementation, not production deployment approval. Review the code and UI, then separately address the inherited production storage/privacy/abuse/backup gates and unavailable platform/accessibility checks. Work stops at Phase D; no push, merge, PR or issue closure is performed.
+
+## Final-review follow-up
+
+The [Milestone 3 final review](reviews/milestone-3-final-review.md) adds deletion focus restoration when the invoking button no longer exists, a regression test, actual byte-changing photo replacement coverage, and an opt-in API restart cleanup test (`VERIFY_API_RESTART=true`). Current final-review verification has 29 frontend tests; the 28-test results above describe the original Phase D commit. Development merge conditions and production readiness are assessed separately in that report. Exact Windows instructions are in [windows-verification.md](windows-verification.md), with execution on Windows explicitly unverified.

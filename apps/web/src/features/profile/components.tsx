@@ -164,11 +164,19 @@ export function Dialog({
   useEffect(() => {
     const el = ref.current
     const previousFocus = document.activeElement
+    const focusRegion =
+      previousFocus instanceof HTMLElement
+        ? previousFocus.closest('.photo-editor, section')
+        : null
     el?.showModal()
     return () => {
       el?.close()
       if (previousFocus instanceof HTMLElement && previousFocus.isConnected)
         previousFocus.focus()
+      else if (focusRegion?.isConnected)
+        focusRegion
+          .querySelector<HTMLElement>('button:not(:disabled), a[href]')
+          ?.focus()
     }
   }, [])
   return (
