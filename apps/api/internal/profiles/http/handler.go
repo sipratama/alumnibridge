@@ -17,6 +17,7 @@ import (
 )
 
 type Handler struct {
+	discovery   *profiles.DiscoveryService
 	publication *profiles.PublishingService
 	service     *profiles.Service
 	identity    *identity.Service
