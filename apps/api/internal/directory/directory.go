@@ -12,6 +12,7 @@ import (
 )
 
 var ErrInvalid = errors.New("invalid directory input")
+var ErrDatabaseTimeout = errors.New("directory database timeout")
 
 type Spec struct {
 	Query          string   `json:"query"`
