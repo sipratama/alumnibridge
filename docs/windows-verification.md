@@ -21,11 +21,13 @@ Invoke-WebRequest http://localhost:19000/minio/health/ready -UseBasicParsing | S
 Invoke-RestMethod http://localhost:18085/realms/alumnibridge/.well-known/openid-configuration | Select-Object issuer,jwks_uri
 Invoke-RestMethod http://localhost:8080/health
 Invoke-RestMethod http://localhost:8080/ready
+Invoke-RestMethod 'http://localhost:8080/api/v1/directory?limit=1' | Select-Object items,next_cursor
 Invoke-WebRequest http://localhost:5173/ -UseBasicParsing | Select-Object StatusCode
+Invoke-WebRequest http://localhost:5173/alumni -UseBasicParsing | Select-Object StatusCode
 try { Invoke-WebRequest http://localhost:8080/api/v1/users/me/profile -UseBasicParsing } catch { [int]$_.Exception.Response.StatusCode }
 ```
 
-Expected: healthy databases/Keycloak/MinIO, migrate completes successfully, migration version 6 with `dirty=false`, health/readiness and web return 200, unauthenticated owner profile returns 401. Startup applies only outstanding migrations through the existing migration runner; never use a reset, `force`, volume deletion or table truncation to fix startup. If a command fails, inspect only project logs with `podman compose -p alumnibridge --env-file .env.example logs --tail=100 api migrate minio keycloak` and resolve the actual error.
+Expected: healthy databases/Keycloak/MinIO, migrate completes successfully, migration version 6 with `dirty=false`, health/readiness, anonymous Directory and web routes return 200, unauthenticated owner profile returns 401. Startup applies only outstanding migrations through the existing migration runner; never use a reset, `force`, volume deletion or table truncation to fix startup. If a command fails, inspect only project logs with `podman compose -p alumnibridge --env-file .env.example logs --tail=100 api migrate minio keycloak` and resolve the actual error.
 
 For existing Keycloak databases, import does not overwrite the client. Read `alumnibridge-web` in the admin console: public client, standard flow enabled, PKCE S256, sole Valid Redirect URI `http://localhost:5173/`, web origin `http://localhost:5173`, direct grants and implicit flow disabled. Do not broaden the allowlist to repair an authentication failure. The running Mac client was inspected separately in the [final review](reviews/milestone-3-final-review.md).
 

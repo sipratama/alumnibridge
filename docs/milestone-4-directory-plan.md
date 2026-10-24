@@ -1,10 +1,10 @@
 # Milestone 4 — Alumni Directory & Discovery
 
 Date: 2026-10-24 (Asia/Jakarta).
-Status: **Phase D frontend implemented locally; review pending**.
+Status: **Phase E integrated acceptance completed locally with conditions**.
 
 Current implementation/test evidence: [Phase B backend](milestone-4-phase-b-backend.md) and [Phase C hardening](milestone-4-phase-c-hardening.md). The repository/GitHub observations below record the original Phase A alignment.
-Phase C review is recorded in [its final report](reviews/milestone-4-phase-c-review.md). The [Phase D frontend](milestone-4-phase-d-frontend.md) is implemented locally and awaits review; Phase E and production approval remain separate.
+Phase C and Phase D reviews are recorded in their [Phase C](reviews/milestone-4-phase-c-review.md) and [Phase D](reviews/milestone-4-phase-d-review.md) reports. The [Phase D frontend](milestone-4-phase-d-frontend.md) and [Phase E integrated acceptance](milestone-4-phase-e-acceptance.md) are complete locally. Final-SHA CI, maintainer merge approval and production approval remain separate.
 
 ## Objective and documents
 

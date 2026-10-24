@@ -1,9 +1,9 @@
 # Milestone 4 — Alumni Directory & Discovery design
 
 Date: 2026-10-24 (Asia/Jakarta). Base: `1537c8899fa8fff51ecc7fac01db1d1f8814526c`.
-Status: **Approved Phase A design; Phases B–D implemented on the feature branch; Phase E final review pending**.
+Status: **Approved Phase A design; Phases B–D implemented; Phase E integrated acceptance completed locally with conditions**.
 
-See [Phase B implementation](milestone-4-phase-b-backend.md), [Phase C hardening](milestone-4-phase-c-hardening.md) and [Phase D frontend evidence](milestone-4-phase-d-frontend.md). Membership-first locking refines the preliminary order below to coordinate with the database revocation safeguard.
+See [Phase B implementation](milestone-4-phase-b-backend.md), [Phase C hardening](milestone-4-phase-c-hardening.md), [Phase D frontend evidence](milestone-4-phase-d-frontend.md) and [Phase E acceptance](milestone-4-phase-e-acceptance.md). Membership-first locking refines the preliminary order below to coordinate with the database revocation safeguard.
 
 Canonical policy: [ADR 0002](decisions/0002-directory-discoverability.md). Execution and repository evidence: [directory plan](milestone-4-directory-plan.md). Product requirements: [PRD](prd.md).
 
@@ -284,7 +284,7 @@ Extend the existing [.github/workflows/ci.yml](../.github/workflows/ci.yml): bac
 | D | Public React directory, owner consent controls, filters/cards/pagination and accessible cache-safe navigation | #17; #18 regressions |
 | E | Real browser/regression/platform/accessibility testing, final documentation/review and prepare PR after approval | #19; acceptance evidence for #14–#18 |
 
-Phase B remediation and Phase C final review are recorded. Phase D frontend is implemented locally and awaits maintainer review; Phase E remains pending. Remaining product/operational follow-ups are bounded:
+Phase B/C/D reviews and Phase E acceptance are recorded. Milestone PR and production approval remain separate. Remaining product/operational follow-ups are bounded:
 
 1. The maintainer approved the ADR's verified-only policy, default-false opt-in and per-membership academic flags. The chosen design preserves current PRD eligibility; expanding to student/pending discovery would require a policy revision before coding.
 2. Review the implemented owner consent copy and academic-choice withdrawal UX. The design requires explicit fresh consent over automatic restoration. Legal language/retention/audit requirements remain launch decisions.
