@@ -93,7 +93,7 @@ func TestReviewAuthenticatedAPIAndConcurrency(t *testing.T) {
             var rev int64
             err=db.QueryRow(ctx,`SELECT revision FROM `+table+` WHERE id=$1`,item).Scan(&rev)
             if err!=nil {rev=1}
-            req.Header.Set("If-Match",fmt.Sprintf(`"ab-%s-v%d"`,kind,rev))
+            req.Header.Set("If-Match",fmt.Sprintf(`"ab-%s-%s-v%d"`,kind,item.String(),rev))
           }
         }
 		w := httptest.NewRecorder()
