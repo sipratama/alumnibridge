@@ -1,10 +1,10 @@
 # Milestone 4 Phase E — Integrated acceptance
 
-Review date: 2026-10-24 (Asia/Jakarta). Branch: `feature/milestone-4-alumni-directory`. Reviewed and final Git HEAD: `e1a432efc2fb7508762c1b6d05686780b5af1174`. The fetched remote feature branch matched this SHA. Phase E documentation and screenshots are local uncommitted changes awaiting maintainer review; a later documentation commit requires its own CI run. No code, schema, dependency, or OpenAPI correction was needed in this phase.
+Review date: 2026-10-24 (Asia/Jakarta). Branch: `feature/milestone-4-alumni-directory`. The Phase E browser and application review tested `e1a432efc2fb7508762c1b6d05686780b5af1174`; the fetched remote feature branch matched that SHA at the time. The Phase E documentation and screenshots were subsequently committed at `5bb849e43dee3dcaff73121e0238769541167070`. A local revalidation implementation commit, `3d09a2731ac30507b4ef74e1a3b3c3eea63ea7ee`, and this report amendment follow it. The final remediation HEAD is the commit containing this amended report; its exact SHA is recorded in the final delivery report because a commit cannot contain its own SHA. No code, schema, dependency, or OpenAPI correction was needed during the original Phase E execution.
 
 ## Recommendation
 
-**READY WITH CONDITIONS for Milestone 4 PR review.** The development baseline passed the integrated checks below, including four-job CI at reviewed application SHA. Merge approval still requires maintainer review and CI after the Phase E documentation is committed and pushed. Windows/Podman and a real screen-reader session remain unverified; do not claim those platforms or WCAG compliance. Production approval is separate and blocked by Issue #11 and the operational gates listed below.
+**READY WITH CONDITIONS for Milestone 4 PR review.** The development baseline passed the integrated checks below, including four-job CI at the original application SHA and later at the Phase E documentation SHA. Merge approval still requires maintainer review and CI on the final remediation SHA after it is pushed, plus PR CI. Windows/Podman and a real screen-reader session remain unverified; do not claim those platforms or WCAG compliance. Production approval is separate and blocked by Issue #11 and the operational gates listed below.
 
 No new Critical or High defect was found. The existing last-writer-wins privacy/consent behavior was confirmed as Issue #11's High production risk; it was not changed in this phase. No Milestone 5 work was started.
 
@@ -55,6 +55,8 @@ The host was macOS (`Darwin`) with Docker/OrbStack; `podman` and Windows PowerSh
 
 ## Regression and CI
 
+The table below records the original Phase E execution at application SHA `e1a432e`; the later local remediation checks are recorded in the addendum.
+
 | Check | Actual result |
 | --- | --- |
 | `go test -count=1 ./...` | PASS against isolated PostgreSQL 17 and MinIO |
@@ -68,7 +70,15 @@ The host was macOS (`Darwin`) with Docker/OrbStack; `podman` and Windows PowerSh
 
 The first isolated Go test attempt found no tables because the separate `abm4e_test` database had not yet received migrations; it was migrated through 000006, then the complete normal/race/vet/build sequence passed. A transient Alpine compiler package download was retried successfully. Neither failure occurred in the final test run.
 
-The earlier [run 40090480917](https://github.com/sipratama/alumnibridge/actions/runs/40090480917) tested `2ba71cc0`. After a safe fetch confirmed the remote feature branch was already at `e1a432efc2fb7508762c1b6d05686780b5af1174`, this phase dispatched [run 40099487422](https://github.com/sipratama/alumnibridge/actions/runs/40099487422) on that branch. The run completed **success at the exact reviewed SHA**: Backend, Frontend, PostgreSQL/MinIO integration, and Repository whitespace all passed. The local Phase E documentation/screenshots were created after that commit and are not covered by this run. When they are committed and pushed with maintainer authorization, verify CI on that newer final SHA and the milestone PR before merge. No push, PR or issue mutation was performed in this review.
+The earlier [run 40090480917](https://github.com/sipratama/alumnibridge/actions/runs/40090480917) tested `2ba71cc0`. After a safe fetch confirmed the remote feature branch was at `e1a432efc2fb7508762c1b6d05686780b5af1174`, Phase E dispatched [run 40099487422](https://github.com/sipratama/alumnibridge/actions/runs/40099487422). It completed **success at that exact application SHA**; it did not test the later documentation/screenshots. Those artifacts were committed in `5bb849e43dee3dcaff73121e0238769541167070`, and [run 40101484894](https://github.com/sipratama/alumnibridge/actions/runs/40101484894) completed **success at that exact documentation SHA** with Backend, Frontend, PostgreSQL/MinIO Integration, and Repository jobs passing. Neither run covers the later local remediation commits. Verify CI on the final remediation SHA and the milestone PR before merge. No push, PR or issue mutation was performed in the original Phase E review.
+
+## Final local remediation addendum
+
+Implementation commit `3d09a2731ac30507b4ef74e1a3b3c3eea63ea7ee` adds the approved 15-second visible-page recheck through TanStack Query's existing interval. It pauses while hidden or while a request is in flight, stops after an error, and suppresses automatic focus retries after 429/503. A manual retry or a new filter/page request remains available. The active cursor and committed filters stay in the Query key; obsolete requests are canceled when that key changes. During any recheck, the page masks previously downloaded cards until fresh results arrive. Query data remains memory-only with `gcTime: 0`; the transport uses `cache: no-store`.
+
+At the default direct-peer budget of 60 requests/minute with a burst of 10, one visible tab uses approximately four periodic requests/minute before navigation or focus requests. Fifteen visible tabs sharing a direct peer can consume the steady budget; synchronized tabs can exhaust the burst sooner. Behind a shared proxy, unrelated users may share one bucket. This remediation leaves the approved cadence and server limits unchanged, stops automatic retries after errors, and retains manual recovery. Before shared/public deployment, enforce a trusted client-aware ingress budget and assess tab concurrency; if the approved budget is insufficient, review a coordinated client/backoff or ingress policy with measured traffic instead of silently raising server limits. This is a release limitation, not a production throughput claim.
+
+Deterministic frontend tests cover cadence, hidden suppression, stale-card masking, 429/503 halt and manual recovery, filter/cursor retention, obsolete-fetch abort, invalid URLs, cleanup, and a single interval. The local frontend suite passed with 61 tests in 9 files; lint and build passed. Go tests and race tests passed against a separate PostgreSQL 17/MinIO Compose project; vet and build passed. Migrations 000001–000006 applied, rolled back, and reapplied in that project's disposable database. OpenAPI 3.1 semantic validation (19 paths), Compose configuration, repository Markdown links, and `git diff --check` passed. The exact final remediation HEAD is recorded in the delivery report. The latest GitHub CI currently covers `5bb849e`, not this local remediation.
 
 ## Issue acceptance and remaining gates
 
