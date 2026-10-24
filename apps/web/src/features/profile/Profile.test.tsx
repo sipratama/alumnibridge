@@ -62,6 +62,7 @@ const privacy: Privacy = {
 } as Privacy
 let savedProfile: Profile
 let savedPrivacy: Privacy
+let privacyRevision: number
 let experiences: Record<string, unknown>[]
 let educations: Record<string, unknown>[]
 let skills: { id: string; name: string }[]
@@ -93,6 +94,7 @@ function renderPage(element: React.ReactNode, path = '/profile') {
 beforeEach(() => {
   savedProfile = { ...profile }
   savedPrivacy = { ...privacy }
+  privacyRevision = 1
   experiences = []
   educations = []
   skills = []
@@ -130,8 +132,17 @@ beforeEach(() => {
           memberships: [],
         })
       if (path === '/users/me/profile/privacy') {
-        if (method === 'PATCH') savedPrivacy = { ...savedPrivacy, ...body }
-        return response(savedPrivacy)
+        const currentETag = `"ab-privacy-v${privacyRevision}"`
+        if (method === 'PATCH') {
+          const supplied = (init?.headers as Record<string, string> | undefined)?.['If-Match']
+          if (supplied && supplied !== currentETag) return response({ error: 'stale_revision' }, 412)
+          savedPrivacy = { ...savedPrivacy, ...body }
+          privacyRevision++
+        }
+        return new Response(JSON.stringify(savedPrivacy), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ETag: `"ab-privacy-v${privacyRevision}"` },
+        })
       }
       if (path === '/users/me/profile') {
         if (method === 'PATCH') savedProfile = { ...savedProfile, ...body }
@@ -441,11 +452,15 @@ describe('privacy and public projection', () => {
     renderPage(<PrivacyPage />)
     await screen.findByRole('radio', { name: /^Private/ })
     savedPrivacy = { ...savedPrivacy, visibility: 'public' }
+    privacyRevision++
     click('Save privacy settings')
     expect(
       await screen.findByText(/Privacy settings changed in another session/),
     ).toBeInTheDocument()
-    expect(calls.filter((call) => call.method === 'PATCH')).toHaveLength(0)
+    const privacyPatches = calls.filter((call) => call.method === 'PATCH' && call.path === '/users/me/profile/privacy')
+    expect(privacyPatches).toHaveLength(1)
+    expect((privacyPatches[0].headers as Record<string, string>)['If-Match']).toBe('"ab-privacy-v1"')
+    expect(savedPrivacy.visibility).toBe('public')
   })
   it('renders a public allowlist anonymously without owner requests or verification inference', async () => {
     savedPrivacy.visibility = 'public'
