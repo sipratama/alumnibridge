@@ -1,8 +1,8 @@
 # ADR 0002 — Separate directory discovery and academic publication consent
 
 Date: 2026-10-24 (Asia/Jakarta).
-Status: **Chosen Phase A design; awaiting maintainer review before implementation**.
-Scope: Milestone 4 — Alumni Directory & Discovery. No runtime or schema change is made by this ADR.
+Status: **Accepted for Milestone 4 implementation by the maintainer on 2026-10-24**.
+Scope: Milestone 4 — Alumni Directory & Discovery. The [Phase B backend](../milestone-4-phase-b-backend.md) implements this decision through migration 000006 and owner/public APIs.
 
 ## Context
 
@@ -37,4 +37,4 @@ No verifier/admin workflow is added to make the directory appear populated. Back
 
 Existing anonymous `/in/:slug` and `/api/v1/profiles/{slug}` access for PUBLIC students/pending alumni remains valid. Discovery withdrawal alone does not privatize a directly public profile or revoke its public photo. Existing owner privacy requests retain their current required `visibility` contract; directory consent uses a separate owner endpoint, with transactional withdrawal integration. No client-supplied owner, moderation state or verification flag is accepted.
 
-Before Phase B, the maintainer reviews this policy, especially verified-only eligibility, consent wording and academic consent granularity. The [design](../milestone-4-directory-design.md) specifies the candidate API, schema, tests and bounded pagination. OpenAPI will describe executable endpoints when Phase B adds them; this planning ADR does not claim they exist.
+The maintainer approved verified-only eligibility, separate discovery opt-in and academic consent granularity for Phase B. Owner UI consent copy remains Phase D work and legal wording remains a launch gate. The [design](../milestone-4-directory-design.md) specifies the candidate API, schema, tests and bounded pagination. Phase B now documents executable endpoints in OpenAPI; frontend discovery controls are not yet implemented.

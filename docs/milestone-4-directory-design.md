@@ -1,7 +1,9 @@
 # Milestone 4 — Alumni Directory & Discovery design
 
 Date: 2026-10-24 (Asia/Jakarta). Base: `1537c8899fa8fff51ecc7fac01db1d1f8814526c`.
-Status: **Phase A design for maintainer review; no directory API, migration or UI implemented**.
+Status: **Approved Phase A design; backend foundation implemented in Phase B, UI not implemented**.
+
+See [Phase B implementation and test evidence](milestone-4-phase-b-backend.md). Membership-first locking refines the preliminary order below to coordinate with the database revocation safeguard.
 
 Canonical policy: [ADR 0002](decisions/0002-directory-discoverability.md). Execution and repository evidence: [directory plan](milestone-4-directory-plan.md). Product requirements: [PRD](prd.md).
 
@@ -86,7 +88,7 @@ Additional academic consent is required even if the user published education his
 
 ## 3. Candidate REST contract
 
-These contracts are selected for Phase A design review, not exposed routes. Add the exact schemas/security/errors to [OpenAPI](../apps/api/openapi/openapi.yaml) with Phase B implementation. Do not mark #14's executable OpenAPI criterion complete now.
+The Phase B backend implements these routes in [OpenAPI](../apps/api/openapi/openapi.yaml). Full rate limiting and performance/abuse hardening remain Phase C; 429 below is a planned future response, not an implemented Phase B capability.
 
 ### Anonymous search: `GET /api/v1/directory`
 
@@ -171,7 +173,7 @@ flowchart TD
 - `internal/directory`: concrete service, validated `SearchSpec`, public `Entry`, `Page`, cursor boundary value and small consumer-defined repository interface, e.g. `Search(context.Context, SearchSpec) (Page, error)`. Only add interfaces needed for tests/adapters; no generic repositories.
 - `internal/directory/postgres`: pgx implementation of bounded public read projection over existing tables; SQL and database error mapping stay here. Return directory allowlist types, not user or membership models.
 - `internal/directory/http`: parameter decoding, response DTO mapping, cache headers and errors. Cursor codec stays at the adapter/service boundary; SQL receives only a validated public slug anchor. Standard-library authenticated encryption can implement the codec without a new package dependency.
-- Owner discovery choices belong to profiles publication service/store, not directory read handlers. Resolve actor through the existing verified OIDC-to-internal-UUID path. Scope membership consent changes by both actor and membership in SQL; lock the profile then affected membership rows in deterministic order across all consent writers.
+- Owner discovery choices belong to profiles publication service/store, not directory read handlers. Resolve actor through the existing verified OIDC-to-internal-UUID path. Scope membership consent changes by both actor and membership in SQL; lock affected memberships in UUID order, then the profile and affiliation rows, matching the membership lifecycle trigger. Privacy-only writers lock profile then affiliations without taking membership locks.
 - Share named, pure publication predicates/field policy with profiles where useful. Keep direct-profile PUBLIC checks distinct from the stricter directory eligibility predicate. The directory SQL necessarily enforces the policy at persistence; keep it next to the explicit projection and use shared policy fixtures/contract tests against both adapters to prevent drift. Do not call `Public()` for every result (N+1), or copy its entire history/photo aggregation query.
 - Directory is an explicit cross-module read over trusted membership/reference data in the same database. It neither writes membership status nor introduces a verification module port for a workflow that does not yet exist. Any future verification writer owns its transaction and consent invalidation integration.
 - Wire concrete constructors in `cmd/api`; propagate request context through all work, close pgx rows and map cancellation safely. No HTTP/pgx/Keycloak imports in domain/service policy, no internal HTTP calls or event bus.
@@ -196,7 +198,7 @@ Proposed new additive, reversible migration in Phase B, numbered after the then-
 4. Candidate indexes: partial profiles B-tree on `slug COLLATE "C"` for PUBLIC/VISIBLE/opted-in rows; partial verified alumni membership index by `(user_id, study_program_id, graduation_year)`; reverse `(study_program_id, graduation_year, user_id)` only if measured academic-filter plans need it; reverse `(skill_id, user_id)` for profile skills if plans justify it. Existing institution slug and scoped program slug uniqueness support reference lookup. Avoid adding every candidate speculatively.
 5. Candidate normalized-prefix expression indexes for display name/company/title must exactly match SQL normalization, collation and publication predicates. A normal B-tree does not magically accelerate arbitrary `ILIKE '%term%'`. Begin with escaped lowercased literal prefixes and matching `text_pattern_ops`/C-collation expressions as appropriate; prove actual plans before adding indexes. A users-table name index cannot enforce cross-table profile consent; eligibility stays explicit in SQL.
 
-Migration down removes only new indexes/table/columns; it must not alter migrations 000001–000005, drop tombstones, reset verification or erase photo registry work. Downgrading loses newly added consent settings and leaves discovery disabled because the older app has no directory; document this before deployment. Apply/down/reapply only in disposable databases, plus existing tombstone/photo rollback refusal tests. No migration file is created during Phase A.
+Migration down removes only new indexes/table/columns; it must not alter migrations 000001–000005, drop tombstones, reset verification or erase photo registry work. Downgrading loses newly added consent settings and leaves discovery disabled because the older app has no directory; document this before deployment. Apply/down/reapply only in disposable databases, plus existing tombstone/photo rollback refusal tests. Phase A created no migration file; Phase B now adds migration 000006 and narrow database lifecycle safeguards.
 
 ### Query shape and matching
 
@@ -280,9 +282,9 @@ Extend the existing [.github/workflows/ci.yml](../.github/workflows/ci.yml): bac
 | D | Public React directory, owner consent controls, filters/cards/pagination and accessible cache-safe navigation | #17; #18 regressions |
 | E | Real browser/regression/platform/accessibility testing, final documentation/review and prepare PR after approval | #19; acceptance evidence for #14–#18 |
 
-Phase B begins only after user review. Open implementation/product questions are bounded:
+Phase B was authorized after user review; its backend foundation now awaits review before Phase C. Remaining product/operational follow-ups are bounded:
 
-1. Confirm the ADR's verified-only policy, default-false opt-in and per-membership academic flags. The chosen design preserves current PRD eligibility; expanding to student/pending discovery would require a policy revision before coding.
+1. The maintainer approved the ADR's verified-only policy, default-false opt-in and per-membership academic flags. The chosen design preserves current PRD eligibility; expanding to student/pending discovery would require a policy revision before coding.
 2. Approve consent copy and whether clearing academic choices on withdrawal is acceptable UX. Current design favors explicit fresh consent over automatic restoration. Legal language/retention/audit requirements remain launch decisions.
 3. No verification operator UI exists yet, so real directory inventory can legitimately be empty. Decide future authorized reviewer operations in deferred membership work, not by weakening directory eligibility.
 4. Validate representative Indonesian/Unicode names and company/job-title prefix expectations. Accent folding, substring/fuzzy matching and relevance/name sort are deferred, not silently substituted.

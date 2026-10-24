@@ -1,8 +1,10 @@
 # Milestone 4 — Alumni Directory & Discovery
 
 Date: 2026-10-24 (Asia/Jakarta).
-Status: **Phase A planning prepared for maintainer review; implementation not started**.
-Recommendation: **READY WITH CONDITIONS** for Phase B after review of the policy/API/schema design. This is not production approval.
+Status: **Phase A approved; Phase B backend implemented and awaiting review**.
+
+Current implementation/test evidence: [Phase B backend](milestone-4-phase-b-backend.md). The repository/GitHub observations below record the original Phase A alignment.
+Recommendation: **READY FOR PHASE B REVIEW**. Phase C/D/E remain unstarted; this is not production approval.
 
 ## Objective and documents
 
@@ -54,10 +56,10 @@ The M3 reports are historical evidence at their recorded SHAs. Their statements 
 2. Anonymous and signed-in directory reads share the same allowlist and limits. No administrator privacy bypass, Connections or Messaging.
 3. Academic institution/program/year need separate per-verified-membership consent. Program/year require institution consent. Combined filters match the same membership; private academic records cannot influence results/counts.
 4. Company/title/skill filters honor existing publication flags. Cards omit biography/history/private identifiers. Verification remains trusted application data.
-5. Candidate `GET /api/v1/directory` plus owner `GET/PATCH /api/v1/users/me/profile/discovery`; no endpoint implemented or advertised as shipped OpenAPI yet.
+5. Phase A selected `GET /api/v1/directory` plus owner `GET/PATCH /api/v1/users/me/profile/discovery`; Phase B now implements and documents these endpoints in OpenAPI.
 6. PostgreSQL live projection, bounded literal-prefix/exact filters, canonical slug ordering, authenticated opaque cursor with no internal IDs, no public totals/facets. No search service, materialized private-field index or new infrastructure.
-7. Proposed additive consent columns/table/indexes only; no migration written or running database changed. Existing tombstones, photo registry and applied migrations remain intact.
-8. PRIVATE/opt-out clear discovery/academic consent atomically in the future implementation. Live queries recheck current publication state. Stale owner-write races remain #11; delivered data cannot be recalled.
+7. Phase A proposed additive consent columns/table/indexes; Phase B now adds migration 000006 and tests it on isolated databases only. Existing running development schema, tombstones, photo registry and old migration files remain intact.
+8. PRIVATE/opt-out clear discovery/academic consent atomically in the Phase B implementation. Live queries recheck current publication state. Stale owner-write races remain #11; delivered data cannot be recalled.
 
 ## Phases and issue mapping
 
@@ -79,7 +81,7 @@ Phase C hardens a bounded API; Phase B must not expose an unbounded temporary se
 4. Implement bounded filters and initial cursor contract with a validated public slug anchor; synchronize OpenAPI and add empty/invalid/filter-combination/hidden-field tests.
 5. Run existing backend/frontend/isolated infrastructure checks as applicable to changed executable files and inspect actual CI on a later approved PR. Defer measured performance/rate hardening and React implementation to their planned phases.
 
-## Validation and limits
+## Validation and limits (Phase A historical record)
 
 Executed documentation checks:
 
@@ -90,4 +92,4 @@ Executed documentation checks:
 
 Local application unit/build/lint, runtime, database, application-browser E2E, Windows/Podman and screen-reader tests are **not run in Phase A**; the master CI and M3 reports are separately attributed evidence. Rendering the documentation diagram is not an application browser test. No container, network, volume, database or verification state is changed.
 
-Conditions before implementation: maintainer review of the selected eligibility/academic consent policy and candidate contracts. Conditions before milestone merge: full implemented tests/review/CI and resolution or explicit acceptance of remaining platform/accessibility gaps. Conditions before production: atomic concurrency #11, trusted verification/moderation operations, evaluated branch protection #10, measured abuse controls, production OIDC/TLS/storage/secret policy, consent/legal/retention and backup/restore gates. Empty inventory is acceptable until genuine verified memberships exist; do not weaken verification to fill the directory.
+The maintainer approved the Phase A eligibility/academic consent policy and contracts; Phase B now implements the backend foundation. Phase B review is required before Phase C. Conditions before milestone merge: full implemented tests/review/CI and resolution or explicit acceptance of remaining platform/accessibility gaps. Conditions before production: atomic concurrency #11, trusted verification/moderation operations, evaluated branch protection #10, measured abuse controls, production OIDC/TLS/storage/secret policy, consent/legal/retention and backup/restore gates. Empty inventory is acceptable until genuine verified memberships exist; do not weaken verification to fill the directory.

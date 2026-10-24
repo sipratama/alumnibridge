@@ -45,6 +45,12 @@ $env:OBJECT_STORAGE_ACCESS_KEY = 'alumnibridge_dev_only'
 $env:OBJECT_STORAGE_SECRET_KEY = 'local_minio_only_change_me'
 $env:OBJECT_STORAGE_BUCKET = 'alumnibridge-profile-photos'
 $env:OBJECT_STORAGE_SECURE = 'false'
+$DirectoryKeyBytes = New-Object byte[] 32
+$DirectoryRng = [Security.Cryptography.RandomNumberGenerator]::Create()
+try {
+    $DirectoryRng.GetBytes($DirectoryKeyBytes)
+    $env:DIRECTORY_CURSOR_KEY = [Convert]::ToBase64String($DirectoryKeyBytes)
+} finally { $DirectoryRng.Dispose() }
 Push-Location apps/api
 go mod download
 go run ./cmd/migrate up
@@ -62,6 +68,12 @@ Pop-Location
 ```
 
 The web app is at `http://localhost:5173`; Keycloak is at `http://localhost:18085`; API liveness is `http://localhost:8080/health`; readiness is `http://localhost:8080/ready`. Create an account from the web app's **Join the community** button, then select Student or Alumni. Alumni memberships start as `pending`; administrator review is a later milestone. Keycloak's local admin console uses username `localadmin` and password `local_admin_only` from `.env.example`. The browser uses Authorization Code Flow with PKCE; the API validates Keycloak access tokens and never accepts a client-supplied user ID. The example client redirects only to `http://localhost:5173/`. Set `VITE_OIDC_CALLBACK_URI` to this exact URI, including the trailing slash. Existing Keycloak databases are not updated by realm import: in the Keycloak Admin Console, inspect **Clients → alumnibridge-web → Settings → Valid redirect URIs** and set the sole value to `http://localhost:5173/` if it differs. Keep **Web origins** at `http://localhost:5173`. The API does not load `.env` itself: set its environment variables in the process as shown above. If you use `.env`, update the commands and corresponding application environment values together.
+
+## Directory backend configuration
+
+Milestone 4 Phase B adds anonymous `GET /api/v1/directory` and authenticated owner `GET/PATCH /api/v1/users/me/profile/discovery`. There is no Directory UI yet. Existing PUBLIC profiles are not listed until a verified alumni owner explicitly opts in. Academic filters require separate membership consent; onboarding cannot grant verification.
+
+`DIRECTORY_CURSOR_KEY` is mandatory for native API startup: canonical base64 of 32 random bytes. On macOS/Linux use `export DIRECTORY_CURSOR_KEY="$(openssl rand -base64 32)"`; Windows generation is included above. Store the generated value in your environment/secret manager if cursors should survive restarts. Key rotation invalidates outstanding 15-minute cursors safely. Compose and `.env.example` contain an explicitly development-only fallback; replace it for shared deployments. Never print real keys or cursor tokens in logs. See [Phase B backend and isolated testing](docs/milestone-4-phase-b-backend.md).
 
 ## Checks
 
