@@ -1,6 +1,6 @@
 # Issue #11 — Implementation phases and release gates
 
-**Status:** In progress. Migration storage drafted; end-to-end optimistic concurrency protection is **NOT IMPLEMENTED OR TESTED**.
+**Status:** Implementation and local security verification in progress. Mandatory conditional writes are implemented for the profile, privacy/discovery, and existing experience/education items. The remaining mutation boundaries and release conditions are recorded in [the remediation review](issue-11-remediation-review.md). Issue #11 remains open and production is blocked.
 **Approved design:** [ADR 0003 proposal](decisions/0003-atomic-optimistic-concurrency-proposal.md) (maintainer approved 2026-10-24).
 **Branch:** `security/issue-11-optimistic-concurrency` from design commit `cba2ca0`.
 
@@ -14,7 +14,7 @@ Committed `000007_resource_revisions.up/down.sql`:
 - Per-item triggers bump revisions for updated history rows.
 - Add `revision_migration_integration_test.go` covering counter boundaries, no-op, PRIVATE withdrawal, per-item updates and rejected SQL rollback.
 
-**Critical pending implementation:** consent-only updates that replace `profile_directory_affiliations` without changing any `profiles` columns must bump `privacy_revision` inside the `UpdateDiscovery` transaction. Membership lifecycle and moderation changes must invalidate the correct validators. Content mutations of `users.display_name`, child collection mutations, and photo pointers also require explicit classification and tests. Database counters alone do not reject stale writes.
+**Implemented after Phase A:** consent-only affiliation updates bump `privacy_revision` inside the `UpdateDiscovery` transaction. Migration 000008 invalidates the shared revision for membership lifecycle changes and serializes simultaneous last-membership revocations. Onboarding display-name changes invalidate profile content revisions. The remaining collection/photo boundaries are classified in the remediation review.
 
 **Phase A acceptance:** run migration up/down/up against disposable PostgreSQL 17; run all integration tests with schema 000007, isolation/trigger ordering checks and two-connection races. Nothing is reported PASS until actually executed.
 
@@ -49,9 +49,8 @@ Committed `000007_resource_revisions.up/down.sql`:
 - Confirm phased 428 cutover is explicitly safe. **Do not present optional If-Match as production-safe.**
 - Review Issue #11 against all acceptance criteria; no PR/merge/issue closure without maintainer authorization.
 
-## Current blockers
+## Current gates
 
-1. No trusted execution of migrations/integration tests has happened in this branch yet: GitHub edits cannot access user's disposable runtime.
-2. The migration supplies counters only. HTTP, backend transaction guards, frontend ETags and conflict UX are not implemented yet.
-3. A revision audit of all writers and lifecycle triggers is required before turning on mandatory 428.
-4. Issue #11 remains OPEN and public production launch remains blocked.
+1. Complete the focused mutation and React conflict audit in the [remediation review](issue-11-remediation-review.md), including the explicitly unguarded collection/photo routes.
+2. Validate the final committed SHA in GitHub CI after maintainer approval to push. Local test results must not be attributed to that future SHA.
+3. Keep Issue #11 open and public production launch blocked pending formal review and maintainer release decisions.
