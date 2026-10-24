@@ -51,7 +51,7 @@ paths:
       summary: Get or initialize the authenticated member's private profile
       security: [{bearerAuth: []}]
       responses:
-        '200': {description: Private profile, content: {application/json: {schema: {$ref: '#/components/schemas/Profile'}}}}
+        '200': {description: Private profile, headers: {ETag: {$ref: '#/components/headers/OwnerETag'}}, content: {application/json: {schema: {$ref: '#/components/schemas/Profile'}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
     patch:
       summary: Update private profile fields and slug
@@ -59,7 +59,7 @@ paths:
       parameters: [{name: If-Match, in: header, required: true, schema: {type: string}, description: 'Strong owner profile ETag; missing 428, stale 412'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ProfilePatch'}}}}
       responses:
-        '200': {description: Updated profile, content: {application/json: {schema: {$ref: '#/components/schemas/Profile'}}}}
+        '200': {description: Updated profile, headers: {ETag: {$ref: '#/components/headers/OwnerETag'}}, content: {application/json: {schema: {$ref: '#/components/schemas/Profile'}}}}
         '400': {description: Invalid input; null is rejected for non-nullable fields}
         '412': {description: Stale revision; safe error code stale_revision}
         '428': {description: If-Match precondition is required}
@@ -67,6 +67,7 @@ paths:
         '415': {description: Content-Type must be application/json}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '409': {description: Slug already reserved}
+        '404': {description: Owner profile absent}
   /api/v1/users/me/experiences:
     get:
       summary: List the owner's experiences, newest first, at most 100
@@ -205,7 +206,7 @@ paths:
       summary: Read the owner's privacy settings, initializing a private profile if absent
       security: [{bearerAuth: []}]
       responses:
-        '200': {description: Owner privacy settings, content: {application/json: {schema: {$ref: '#/components/schemas/Privacy'}}}}
+        '200': {description: Owner privacy settings, headers: {ETag: {$ref: '#/components/headers/OwnerETag'}}, content: {application/json: {schema: {$ref: '#/components/schemas/Privacy'}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
     patch:
       summary: Explicitly select public or private and optionally update field publication choices
@@ -215,7 +216,7 @@ paths:
         - {name: If-Match, in: header, required: true, description: 'Strong privacy resource ETag from the original owner draft', schema: {type: string}}
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Privacy'}}}}
       responses:
-        '200': {description: Updated privacy settings, content: {application/json: {schema: {$ref: '#/components/schemas/Privacy'}}}}
+        '200': {description: Updated privacy settings, headers: {ETag: {$ref: '#/components/headers/OwnerETag'}}, content: {application/json: {schema: {$ref: '#/components/schemas/Privacy'}}}}
         '400': {description: Invalid input}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '413': {description: JSON body exceeds 64 KiB}
@@ -346,10 +347,12 @@ paths:
         '428': {description: If-Match precondition is required}
         '413': {$ref: '#/components/responses/DiscoveryTooLarge'}
         '415': {$ref: '#/components/responses/DiscoveryMedia'}
-        '428': {description: If-Match required}
         '500': {$ref: '#/components/responses/DirectoryInternal'}
 components:
   headers:
+    OwnerETag:
+      description: Strong validator for the owner resource returned by this response
+      schema: {type: string}
     NoStore:
       schema: {type: string, const: no-store}
     NoSniff:
@@ -463,6 +466,7 @@ components:
     DiscoverySettings:
       description: Private owner settings; eligible is independent of opt-in and effective_discoverable includes it
       headers:
+        ETag: {$ref: '#/components/headers/OwnerETag'}
         Cache-Control: {$ref: '#/components/headers/NoStore'}
         X-Content-Type-Options: {$ref: '#/components/headers/NoSniff'}
       content: {application/json: {schema: {$ref: '#/components/schemas/Discovery'}}}
