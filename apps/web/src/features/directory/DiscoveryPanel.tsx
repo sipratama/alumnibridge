@@ -54,6 +54,7 @@ function DiscoveryForm({ initial, visibility, onReload }: { initial: DiscoverySe
     try {
       // Compare-and-set is enforced in PostgreSQL. Never fetch a newer ETag
       // immediately before saving an older draft.
+      if (!saved.__etag) throw new ApiError(428, 'revision_missing')
       const result = await updateDiscovery(getToken, patch, saved.__etag)
       client.setQueryData(['professional', user?.id, 'profile/discovery'], result)
       setMessage(result.effective_discoverable ? 'Your profile can now appear in Alumni Directory.' : 'Directory discovery is off. Your academic choices are no longer published here.')
