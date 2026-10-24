@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Copy, ExternalLink, LockKeyhole } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { ApiError, request } from '@/shared/api/client'
+import { ApiError, versionedRequest } from '@/shared/api/client'
 import {
   json,
   ownerPath,
@@ -50,18 +50,11 @@ function PrivacyForm({ initial, slug }: { initial: Privacy; slug: string }) {
   const [message, setMessage] = useState('')
   const [validation, setValidation] = useState('')
   const mutation = useOwnerMutation(async (patch: Partial<Privacy>, token) => {
-    const latest = await request<Privacy>(`${ownerPath}/profile/privacy`, token)
-    if (
-      (Object.keys(patch) as (keyof Privacy)[]).some(
-        (key) => latest[key] !== saved[key],
-      )
-    ) {
-      throw new ApiError(409, 'privacy_changed')
-    }
-    return request<Privacy>(
+    // The validator belongs to the original displayed draft, not a preflight GET.
+    return versionedRequest<Privacy>(
       `${ownerPath}/profile/privacy`,
       token,
-      json('PATCH', patch),
+      { ...json('PATCH', patch), headers: saved.__etag ? { 'If-Match': saved.__etag } : {} },
     )
   })
   const needsConsent =
@@ -188,7 +181,7 @@ function PrivacyForm({ initial, slug }: { initial: Privacy; slug: string }) {
             </p>
           )}
           {mutation.error instanceof ApiError &&
-          mutation.error.code === 'privacy_changed' ? (
+          (mutation.error.status === 412 || mutation.error.code === 'privacy_changed') ? (
             <p className="profile-error" role="alert">
               Privacy settings changed in another session. Your choices are
               preserved here. Reload before saving so an earlier publication
