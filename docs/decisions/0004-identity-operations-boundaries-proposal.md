@@ -65,4 +65,6 @@ Rollback after a deletion or subject rebind cannot restore erased credentials, c
 
 ## Review gate
 
+The [ADR 0005 lifecycle policy proposal](0005-identity-lifecycle-policy-proposal.md) provides a per-topic decision record for deletion, retention, sole-operator controls, audit, recovery and topology. All production rows remain open until the maintainer records an explicit choice and parameters. Its proposal does not expand this ADR's bounded development approval.
+
 The maintainer may review provider-neutral topology, manual operator procedures and disposable tests while operating the early project alone. Before production privileged operations, approve hosting/issuer ownership and issuer-change policy, administrator authority including a distinct approver or explicit compensating control for first-grant and emergency access, deletion eligibility and retention including name-bearing slugs and non-reprovision markers, recovery proof and rebind policy, and audit retention. The single-operator development procedure is not production approval. This partial acceptance is not evidence that production deployment, recovery, deletion or verification operations work. Issue #11 and the existing follow-up issues remain separate release gates.
