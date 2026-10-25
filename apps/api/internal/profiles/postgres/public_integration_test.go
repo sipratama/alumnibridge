@@ -33,7 +33,7 @@ import (
 	"github.com/sipratama/alumnibridge/apps/api/internal/profiles/objectstorage"
 )
 
-func publicationJWT(t *testing.T, ctx context.Context) (auth.Verifier, func(string, time.Time) string) {
+func publicationJWT(t *testing.T, ctx context.Context, db *pgxpool.Pool) (auth.Verifier, func(string, time.Time) string) {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -43,7 +43,7 @@ func publicationJWT(t *testing.T, ctx context.Context) (auth.Verifier, func(stri
 		json.NewEncoder(w).Encode(map[string]any{"keys": []any{map[string]string{"kty": "RSA", "kid": "publication", "alg": "RS256", "use": "sig", "n": base64.RawURLEncoding.EncodeToString(key.N.Bytes()), "e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes())}}})
 	}))
 	t.Cleanup(jwks.Close)
-	verifier, err := auth.NewJWTVerifier(ctx, jwks.URL, "https://publication.example", "alumnibridge-api", "alumnibridge-web")
+	verifier, err := auth.NewJWTVerifier(ctx, jwks.URL, "https://publication.example", "alumnibridge-api", "alumnibridge-web", identitypg.New(db, "https://publication.example"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,9 +90,9 @@ func TestPublicProfilesAndMinIO(t *testing.T) {
 			t.Error("bucket cleanup", err)
 		}
 	}()
-	ids := identity.NewService(identitypg.New(db))
+	ids := identity.NewService(identitypg.New(db, "https://publication.example"))
 	subject := uuid.NewString()
-	verifier, sign := publicationJWT(t, ctx)
+	verifier, sign := publicationJWT(t, ctx, db)
 	ownerToken := sign(subject, time.Now().Add(time.Hour))
 	otherSubject := uuid.NewString()
 	otherToken := sign(otherSubject, time.Now().Add(time.Hour))

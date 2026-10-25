@@ -14,6 +14,7 @@ var (
 	ErrInvalidInput       = errors.New("invalid onboarding input")
 	ErrProgramNotFound    = errors.New("study program not found")
 	ErrMembershipConflict = errors.New("membership already exists with different details")
+	ErrAccessDenied       = errors.New("application account unavailable")
 )
 
 type Principal struct {

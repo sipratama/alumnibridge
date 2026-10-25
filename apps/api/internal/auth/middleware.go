@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -27,7 +28,14 @@ func Middleware(verifier Verifier) func(http.Handler) http.Handler {
 			}
 			actor, err := verifier.Verify(r.Context(), parts[1])
 			if err != nil {
-				unauthorized(w)
+				switch {
+				case errors.Is(err, identity.ErrAccessDenied):
+					writeError(w, http.StatusForbidden, "account_unavailable")
+				case errors.Is(err, ErrAccessUnavailable):
+					writeError(w, http.StatusServiceUnavailable, "access_check_unavailable")
+				default:
+					unauthorized(w)
+				}
 				return
 			}
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, actor)))

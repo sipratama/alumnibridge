@@ -56,7 +56,8 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	verifier, err := auth.NewJWTVerifier(ctx, cfg.OIDCJWKSURL, cfg.OIDCIssuer, cfg.OIDCAudience, cfg.OIDCClientID)
+	identityStore := identitypostgres.New(db, cfg.OIDCIssuer)
+	verifier, err := auth.NewJWTVerifier(ctx, cfg.OIDCJWKSURL, cfg.OIDCIssuer, cfg.OIDCAudience, cfg.OIDCClientID, identityStore)
 	if err != nil {
 		logger.Error("OIDC verifier initialization failed", "error", err)
 		os.Exit(1)
@@ -94,7 +95,7 @@ func main() {
 	}
 	directoryService := directory.New(directorypostgres.NewWithTimeout(searchDB, cfg.DirectoryStatementTimeout), cursor)
 	discovery := profiles.NewDiscovery(profileStore)
-	service := identity.NewService(identitypostgres.New(db))
+	service := identity.NewService(identityStore)
 	router := httpserver.New(db, logger)
 	router.Route("/api/v1", func(r chi.Router) {
 		identityhttp.RegisterRoutes(r, service, verifier)

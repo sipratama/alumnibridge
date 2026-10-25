@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: AlumniBridge API
-  version: 0.4.0
-  description: Identity, onboarding, professional profiles, and privacy-safe anonymous alumni directory endpoints. Includes consent-based public profiles, owner privacy controls, and access-controlled photos. Public responses never contain internal identities or private contact data.
+  version: 0.4.1
+  description: Identity, onboarding, professional profiles, and privacy-safe anonymous alumni directory endpoints. Protected routes check current application access status after token validation. Includes consent-based public profiles, owner privacy controls, and access-controlled photos. Public responses never contain internal identities or private contact data.
 servers:
   - url: http://localhost:8080
 paths:
@@ -24,6 +24,8 @@ paths:
       responses:
         '200': {description: Current user, content: {application/json: {schema: {$ref: '#/components/schemas/User'}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/AccountUnavailable'}
+        '503': {$ref: '#/components/responses/AccessCheckUnavailable'}
   /api/v1/users/me:
     get:
       summary: Return the authenticated user's application account
@@ -31,6 +33,8 @@ paths:
       responses:
         '200': {description: Current user, content: {application/json: {schema: {$ref: '#/components/schemas/User'}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/AccountUnavailable'}
+        '503': {$ref: '#/components/responses/AccessCheckUnavailable'}
   /api/v1/auth/onboarding:
     post:
       summary: Create an idempotent student or pending alumni membership
@@ -44,6 +48,8 @@ paths:
         '200': {description: Updated current user, content: {application/json: {schema: {$ref: '#/components/schemas/User'}}}}
         '400': {description: Invalid onboarding input or unknown study program}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/AccountUnavailable'}
+        '503': {$ref: '#/components/responses/AccessCheckUnavailable'}
         '409': {description: Existing membership has different graduation year}
         '415': {description: Content-Type must be application/json}
   /api/v1/users/me/profile:
@@ -53,6 +59,8 @@ paths:
       responses:
         '200': {description: Private profile, headers: {ETag: {$ref: '#/components/headers/OwnerETag'}}, content: {application/json: {schema: {$ref: '#/components/schemas/Profile'}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/AccountUnavailable'}
+        '503': {$ref: '#/components/responses/AccessCheckUnavailable'}
     patch:
       summary: Update private profile fields and slug
       security: [{bearerAuth: []}]
@@ -66,6 +74,8 @@ paths:
         '413': {description: JSON body exceeds 64 KiB}
         '415': {description: Content-Type must be application/json}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/AccountUnavailable'}
+        '503': {$ref: '#/components/responses/AccessCheckUnavailable'}
         '409': {description: Slug already reserved}
         '404': {description: Owner profile absent}
   /api/v1/users/me/experiences:
@@ -75,6 +85,8 @@ paths:
       responses:
         '200': {description: Experience list, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Experience'}}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/AccountUnavailable'}
+        '503': {$ref: '#/components/responses/AccessCheckUnavailable'}
     post:
       summary: Add an experience
       security: [{bearerAuth: []}]
@@ -85,6 +97,8 @@ paths:
         '413': {description: JSON body exceeds 64 KiB}
         '415': {description: Content-Type must be application/json}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/AccountUnavailable'}
+        '503': {$ref: '#/components/responses/AccessCheckUnavailable'}
         '409': {description: Experience limit reached}
   /api/v1/users/me/experiences/{id}:
     parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
@@ -100,6 +114,8 @@ paths:
         '413': {description: JSON body exceeds 64 KiB}
         '415': {description: Content-Type must be application/json}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/AccountUnavailable'}
+        '503': {$ref: '#/components/responses/AccessCheckUnavailable'}
         '412': {description: Stale revision}
         '428': {description: If-Match required}
         '404': {description: Experience absent or not owned}
@@ -110,6 +126,8 @@ paths:
       responses:
         '204': {description: Deleted}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/AccountUnavailable'}
+        '503': {$ref: '#/components/responses/AccessCheckUnavailable'}
         '412': {description: Stale revision}
         '428': {description: If-Match required}
         '404': {description: Experience absent or not owned}
@@ -120,6 +138,8 @@ paths:
       responses:
         '200': {description: Education list, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Education'}}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/AccountUnavailable'}
+        '503': {$ref: '#/components/responses/AccessCheckUnavailable'}
     post:
       summary: Add education history
       security: [{bearerAuth: []}]
@@ -130,6 +150,8 @@ paths:
         '413': {description: JSON body exceeds 64 KiB}
         '415': {description: Content-Type must be application/json}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/AccountUnavailable'}
+        '503': {$ref: '#/components/responses/AccessCheckUnavailable'}
         '409': {description: Education limit reached}
   /api/v1/users/me/educations/{id}:
     parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
@@ -145,6 +167,8 @@ paths:
         '413': {description: JSON body exceeds 64 KiB}
         '415': {description: Content-Type must be application/json}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/AccountUnavailable'}
+        '503': {$ref: '#/components/responses/AccessCheckUnavailable'}
         '412': {description: Stale revision}
         '428': {description: If-Match required}
         '404': {description: Education entry absent or not owned}
@@ -155,6 +179,8 @@ paths:
       responses:
         '204': {description: Deleted}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/AccountUnavailable'}
+        '503': {$ref: '#/components/responses/AccessCheckUnavailable'}
         '412': {description: Stale revision}
         '428': {description: If-Match required}
         '404': {description: Education entry absent or not owned}
@@ -174,6 +200,8 @@ paths:
       responses:
         '200': {description: Skill links, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Skill'}}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/AccountUnavailable'}
+        '503': {$ref: '#/components/responses/AccessCheckUnavailable'}
     post:
       summary: Add or reuse a normalized skill, idempotent for an existing owner link
       security: [{bearerAuth: []}]
@@ -182,6 +210,8 @@ paths:
         '201': {description: Owner skill link, content: {application/json: {schema: {$ref: '#/components/schemas/Skill'}}}}
         '400': {description: Invalid skill name}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/AccountUnavailable'}
+        '503': {$ref: '#/components/responses/AccessCheckUnavailable'}
         '409': {description: Skill limit reached}
   /api/v1/users/me/skills/{id}:
     parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
@@ -191,6 +221,8 @@ paths:
       responses:
         '204': {description: Deleted}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/AccountUnavailable'}
+        '503': {$ref: '#/components/responses/AccessCheckUnavailable'}
         '404': {description: Skill link absent or not owned}
   /api/v1/profiles/{slug}:
     parameters: [{name: slug, in: path, required: true, schema: {type: string, minLength: 3, maxLength: 64}}]
@@ -208,6 +240,8 @@ paths:
       responses:
         '200': {description: Owner privacy settings, headers: {ETag: {$ref: '#/components/headers/OwnerETag'}}, content: {application/json: {schema: {$ref: '#/components/schemas/Privacy'}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/AccountUnavailable'}
+        '503': {$ref: '#/components/responses/AccessCheckUnavailable'}
     patch:
       summary: Explicitly select public or private and optionally update field publication choices
       description: Visibility is mandatory. Omitted flags retain their values. Null, verification and moderation fields are rejected. Publishing shares display name and headline; optional groups remain hidden unless enabled. A strong If-Match from owner privacy or discovery GET is required; both share the same privacy revision. Missing validator is rejected with HTTP 428. Malformed header returns 400, stale revision returns 412.
@@ -219,6 +253,8 @@ paths:
         '200': {description: Updated privacy settings, headers: {ETag: {$ref: '#/components/headers/OwnerETag'}}, content: {application/json: {schema: {$ref: '#/components/schemas/Privacy'}}}}
         '400': {description: Invalid input}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/AccountUnavailable'}
+        '503': {$ref: '#/components/responses/AccessCheckUnavailable'}
         '413': {description: JSON body exceeds 64 KiB}
         '415': {description: Content-Type must be application/json}
         '412': {description: Stale shared privacy revision}
@@ -230,8 +266,9 @@ paths:
       responses:
         '200': {description: Image bytes; Cache-Control no-store and X-Content-Type-Options nosniff, content: {image/png: {schema: {type: string, format: binary}}, image/jpeg: {schema: {type: string, format: binary}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/AccountUnavailable'}
         '404': {description: No photo}
-        '503': {description: Photo storage unavailable}
+        '503': {description: Photo storage or application access check unavailable}
     post:
       summary: Upload or replace the owner's photo using raw image bytes
       description: Requires the strong ETag from GET /users/me/profile in If-Match. The profile-content revision is compared atomically when the photo pointer changes; stale staged objects are queued for durable cleanup. At most four uploads buffer/process bodies concurrently per API process; streamed bodies are limited without relying on Content-Length. Maximum 5 MiB input and normalized output; dimensions at most 4096 per side and 8 million pixels. JPEG is re-encoded, PNG and WebP become PNG; metadata is discarded. Filenames and object keys are never accepted. Replaced and abandoned objects are collected by a durable retry worker.
@@ -247,12 +284,13 @@ paths:
         '201': {description: Photo stored; ETag contains the new profile-content validator, headers: {ETag: {schema: {type: string}}}, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {photo_url: {type: string, const: /api/v1/users/me/profile/photo}}, required: [photo_url]}}}}
         '400': {description: 'Malformed image, MIME/content mismatch, or invalid dimensions'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/AccountUnavailable'}
         '404': {description: Owner profile absent}
         '412': {description: Stale profile-content revision; staged object queued for cleanup}
         '428': {description: If-Match required}
         '413': {description: Image exceeds 5 MiB}
         '415': {description: Unsupported image media type}
-        '503': {description: Photo storage unavailable}
+        '503': {description: Photo storage or application access check unavailable}
     delete:
       summary: Remove owner photo metadata immediately and queue object deletion
       description: Requires the strong ETag from GET /users/me/profile in If-Match. Deletion compares the profile-content revision atomically before changing the pointer.
@@ -261,6 +299,8 @@ paths:
       responses:
         '204': {description: Photo absent; ETag contains the current profile-content validator; object deletion retries durably if storage is unavailable, headers: {ETag: {schema: {type: string}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/AccountUnavailable'}
+        '503': {$ref: '#/components/responses/AccessCheckUnavailable'}
         '404': {description: Profile absent}
         '412': {description: Stale profile-content revision}
         '428': {description: If-Match required}
@@ -327,6 +367,8 @@ paths:
       responses:
         '200': {$ref: '#/components/responses/DiscoverySettings'}
         '401': {$ref: '#/components/responses/DiscoveryUnauthorized'}
+        '403': {$ref: '#/components/responses/AccountUnavailable'}
+        '503': {$ref: '#/components/responses/AccessCheckUnavailable'}
         '500': {$ref: '#/components/responses/DirectoryInternal'}
     patch:
       summary: Update owner-only discovery and academic publication consent atomically
@@ -349,6 +391,8 @@ paths:
         '200': {$ref: '#/components/responses/DiscoverySettings'}
         '400': {$ref: '#/components/responses/DirectoryInvalid'}
         '401': {$ref: '#/components/responses/DiscoveryUnauthorized'}
+        '403': {$ref: '#/components/responses/AccountUnavailable'}
+        '503': {$ref: '#/components/responses/AccessCheckUnavailable'}
         '404': {$ref: '#/components/responses/DiscoveryNotFound'}
         '409': {$ref: '#/components/responses/DiscoveryConflict'}
         '412': {description: Stale revision; safe error code stale_revision}
@@ -372,6 +416,12 @@ components:
       bearerFormat: JWT
       description: Keycloak access token with alumnibridge-api audience
   responses:
+    AccountUnavailable:
+      description: Application account is suspended, deleting, deleted, or blocked; no owner data is returned
+      content: {application/json: {schema: {$ref: '#/components/schemas/Error'}, example: {error: account_unavailable}}}
+    AccessCheckUnavailable:
+      description: Current application access state could not be checked; request fails closed
+      content: {application/json: {schema: {$ref: '#/components/schemas/Error'}, example: {error: access_check_unavailable}}}
     DirectoryInvalid:
       description: Invalid query, cursor or consent payload
       headers:

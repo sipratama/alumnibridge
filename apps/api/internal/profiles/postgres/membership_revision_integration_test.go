@@ -65,13 +65,13 @@ func TestMembershipRevisionInvalidation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	verifier, sign := publicationJWT(t, ctx)
+	verifier, sign := publicationJWT(t, ctx, db)
 	token := sign(subject, time.Now().Add(time.Hour))
 	store := New(db)
 	router := chi.NewRouter()
 	router.Route("/api/v1", func(r chi.Router) {
-		profileshttp.RegisterPublishingRoutes(r, profiles.New(store), profiles.NewPublishing(store, nil), identity.NewService(identitypg.New(db)), verifier)
-		profileshttp.RegisterDiscoveryRoutes(r, profiles.New(store), profiles.NewDiscovery(store), identity.NewService(identitypg.New(db)), verifier)
+		profileshttp.RegisterPublishingRoutes(r, profiles.New(store), profiles.NewPublishing(store, nil), identity.NewService(identitypg.New(db, "https://publication.example")), verifier)
+		profileshttp.RegisterDiscoveryRoutes(r, profiles.New(store), profiles.NewDiscovery(store), identity.NewService(identitypg.New(db, "https://publication.example")), verifier)
 	})
 	request := func(method, path, body, etag string, want int) *httptest.ResponseRecorder {
 		t.Helper()
