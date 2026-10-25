@@ -38,4 +38,6 @@ GitHub Actions CI is now implemented via merged PR #12; master `1537c88` passed 
 
 Before public launch, review the production storage and moderation conditions in [phase-c-profile-privacy.md](phase-c-profile-privacy.md). Alumni proof/retention and OIDC deployment topology remain open before their respective release work.
 
+An isolated Milestone 5 [access status implementation slice](milestone-5-access-status-slice.md) is under local review on a branch from `master`, dependent on draft design PR #23. It adds a fail-closed protected-route check and additive migration 000009 without implementing deletion or choosing marker retention. Its disposable tests and Keycloak exercise are evidence for that limited slice only; M5 remains incomplete and no production identity topology or lifecycle policy has been approved.
+
 Directory development may have empty inventory before deferred verification operations are available. Use isolated synthetic verified fixtures for tests, never automatic promotion of real pending alumni.

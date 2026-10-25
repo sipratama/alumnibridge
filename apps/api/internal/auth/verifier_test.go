@@ -15,6 +15,10 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+type allowAccess struct{}
+
+func (allowAccess) CheckAccess(context.Context, string, string) error { return nil }
+
 func TestJWTVerifier(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -28,7 +32,7 @@ func TestJWTVerifier(t *testing.T) {
 		}}})
 	}))
 	defer jwks.Close()
-	verifier, err := NewJWTVerifier(context.Background(), jwks.URL, "https://issuer.example/realm", "alumnibridge-api", "alumnibridge-web")
+	verifier, err := NewJWTVerifier(context.Background(), jwks.URL, "https://issuer.example/realm", "alumnibridge-api", "alumnibridge-web", allowAccess{})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -24,7 +24,7 @@ func TestProvisionAndOnboardPostgres(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store := New(db)
+	store := New(db, "https://identity-integration.example")
 	subject := "integration-" + uuid.NewString()
 	t.Cleanup(func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

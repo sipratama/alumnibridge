@@ -67,7 +67,7 @@ func TestDirectoryConsentPrivacyAndSignedJWT(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []any{map[string]string{"kty": "RSA", "kid": "directory", "alg": "RS256", "use": "sig", "n": base64.RawURLEncoding.EncodeToString(key.N.Bytes()), "e": base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.E)).Bytes())}}})
 	}))
 	defer jwks.Close()
-	verifier, err := auth.NewJWTVerifier(ctx, jwks.URL, "https://directory.example", "alumnibridge-api", "alumnibridge-web")
+	verifier, err := auth.NewJWTVerifier(ctx, jwks.URL, "https://directory.example", "alumnibridge-api", "alumnibridge-web", identitypg.New(db, "https://directory.example"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestDirectoryConsentPrivacyAndSignedJWT(t *testing.T) {
 		}
 		return signed
 	}
-	ids := identity.NewService(identitypg.New(db))
+	ids := identity.NewService(identitypg.New(db, "https://directory.example"))
 	ps := profilespg.New(db)
 	profile := profiles.New(ps)
 	discovery := profiles.NewDiscovery(ps)
