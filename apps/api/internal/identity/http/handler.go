@@ -31,6 +31,10 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	actor, _ := auth.Principal(r.Context())
 	user, err := h.service.Me(r.Context(), actor)
 	if err != nil {
+		if errors.Is(err, identity.ErrAccessDenied) {
+			writeError(w, http.StatusForbidden, "account_unavailable")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
@@ -63,6 +67,8 @@ func (h *Handler) onboard(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_study_program")
 	case errors.Is(err, identity.ErrMembershipConflict):
 		writeError(w, http.StatusConflict, "membership_conflict")
+	case errors.Is(err, identity.ErrAccessDenied):
+		writeError(w, http.StatusForbidden, "account_unavailable")
 	case err != nil:
 		writeError(w, http.StatusInternalServerError, "internal_error")
 	default:

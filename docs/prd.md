@@ -52,6 +52,7 @@ Messaging, jobs, recommendations, social feeds, invitations, payment, institutio
 - Collect only information needed for registration, professional discovery, and membership review. Keep verification material in a restricted workflow with a defined retention period before production launch.
 - Public visibility is explicit at the profile level. The public API uses an allowlist of fields; private fields never depend on frontend hiding.
 - Use HTTPS in production, least-privilege database and Keycloak credentials, secret-free repository files, and audit records for administrative decisions.
+- Protected application operations must reject an existing suspended, deleting or deleted identity even while its previously issued OIDC access token remains cryptographically valid. Account deletion, recovery, marker retention and public withdrawal require separate approved lifecycle policies before production use.
 - Store timestamps in UTC and present dates in the viewer's locale. Use UUIDs for application primary keys.
 - Provide accessible forms, clear verification status, and responsive layouts. English is the source language for code and docs; interface localization can be planned separately.
 

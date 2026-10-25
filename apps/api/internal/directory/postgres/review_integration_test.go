@@ -193,7 +193,11 @@ func TestReviewOnboardProfileDiscoveryCompatibility(t *testing.T) {
 		var wg sync.WaitGroup
 		errs := make(chan error, 3)
 		wg.Add(3)
-		go func() { defer wg.Done(); _, err := identitypg.New(db).Onboard(ctx, owner, input); errs <- err }()
+		go func() {
+			defer wg.Done()
+			_, err := identitypg.New(db, "https://directory-review.example").Onboard(ctx, owner, input)
+			errs <- err
+		}()
 		go func() {
 			defer wg.Done()
 			_, err := profilepg.New(db).UpdateProfile(ctx, owner, func(p profiles.Profile) (profiles.Profile, error) { p.Headline = "Compatible update"; return p, nil })
@@ -333,7 +337,7 @@ func TestReviewOwnerMembershipCatalog(t *testing.T) {
 	}
 	t.Logf("301 verified private membership choices: %d JSON bytes", len(body))
 	started = time.Now()
-	u, err := identity.NewService(identitypg.New(db)).Me(ctx, identity.Principal{Subject: "audit-" + owner.String()})
+	u, err := identity.NewService(identitypg.New(db, "https://directory-review.example")).Me(ctx, identity.Principal{Subject: "audit-" + owner.String()})
 	if err != nil || len(u.Memberships) != 301 {
 		t.Fatal("identity membership loading mismatch", len(u.Memberships), err)
 	}

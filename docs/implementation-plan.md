@@ -40,4 +40,6 @@ GitHub Actions CI was added through PR #12. The Issue #11 [remediation review](i
 
 Before public launch, review the production storage and moderation conditions in [phase-c-profile-privacy.md](phase-c-profile-privacy.md). Alumni proof/retention and OIDC deployment topology remain open before their respective release work.
 
+The Milestone 5 [access status implementation slice](milestone-5-access-status-slice.md) is under review in [draft PR #24](https://github.com/sipratama/alumnibridge/pull/24), based on the bounded design approval merged through [PR #23](https://github.com/sipratama/alumnibridge/pull/23). It adds a fail-closed protected-route check and additive migration 000009 without implementing deletion or choosing marker retention. Exact-SHA CI for the pre-reconciliation head passed; review the merged baseline and rerun CI on the new SHA. M5 remains incomplete and no production identity topology or lifecycle policy has been approved.
+
 Directory development may have empty inventory before deferred verification operations are available. Use isolated synthetic verified fixtures for tests, never automatic promotion of real pending alumni.

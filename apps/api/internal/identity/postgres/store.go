@@ -10,16 +10,64 @@ import (
 	"github.com/sipratama/alumnibridge/apps/api/internal/identity"
 )
 
-type Store struct{ db *pgxpool.Pool }
+type Store struct {
+	db     *pgxpool.Pool
+	issuer string
+}
 
-func New(db *pgxpool.Pool) *Store { return &Store{db: db} }
+const subjectAdvisoryLockSQL = `SELECT pg_advisory_xact_lock(hashtextextended(length($1)::text || ':' || $1 || $2, 0))`
+
+func New(db *pgxpool.Pool, issuer string) *Store { return &Store{db: db, issuer: issuer} }
+
+// CheckAccess runs on every verified protected request. A missing user is a
+// new subject, unless the issuer-bound block prevents re-provisioning.
+func (s *Store) CheckAccess(ctx context.Context, issuer, subject string) error {
+	if issuer != s.issuer || issuer == "" {
+		return errors.New("OIDC issuer and identity store issuer differ")
+	}
+	var status string
+	err := s.db.QueryRow(ctx, `SELECT CASE
+  WHEN EXISTS (SELECT 1 FROM identity_subject_blocks WHERE issuer=$1 AND subject=$2) THEN 'deleted'
+  ELSE COALESCE((SELECT access_status FROM users WHERE oidc_subject=$2), 'new') END`, s.issuer, subject).Scan(&status)
+	if err != nil {
+		return err
+	}
+	if status != "active" && status != "new" {
+		return identity.ErrAccessDenied
+	}
+	return nil
+}
 
 func (s *Store) Provision(ctx context.Context, subject, email string) (identity.User, error) {
-	var user identity.User
-	err := s.db.QueryRow(ctx, `INSERT INTO users (oidc_subject, email) VALUES ($1, NULLIF($2, ''))
- ON CONFLICT (oidc_subject) DO UPDATE SET email = COALESCE(EXCLUDED.email, users.email), updated_at = now()
- RETURNING id, COALESCE(email, ''), COALESCE(display_name, '')`, subject, email).Scan(&user.ID, &user.Email, &user.DisplayName)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
+		return identity.User{}, err
+	}
+	defer tx.Rollback(ctx)
+	// Future marker writers must take this same lock before inserting a block.
+	// This serializes a new subject's first provision with its deletion marker.
+	if _, err = tx.Exec(ctx, subjectAdvisoryLockSQL, s.issuer, subject); err != nil {
+		return identity.User{}, err
+	}
+	var blocked bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM identity_subject_blocks WHERE issuer=$1 AND subject=$2)`, s.issuer, subject).Scan(&blocked); err != nil {
+		return identity.User{}, err
+	}
+	if blocked {
+		return identity.User{}, identity.ErrAccessDenied
+	}
+	var user identity.User
+	err = tx.QueryRow(ctx, `INSERT INTO users (oidc_subject, email) VALUES ($1, NULLIF($2, ''))
+ ON CONFLICT (oidc_subject) DO UPDATE SET email = COALESCE(EXCLUDED.email, users.email), updated_at = now()
+ WHERE users.access_status = 'active'
+ RETURNING id, COALESCE(email, ''), COALESCE(display_name, '')`, subject, email).Scan(&user.ID, &user.Email, &user.DisplayName)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return identity.User{}, identity.ErrAccessDenied
+	}
+	if err != nil {
+		return identity.User{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
 		return identity.User{}, err
 	}
 	user.Memberships, err = s.memberships(ctx, user.ID)
@@ -35,7 +83,10 @@ func (s *Store) Onboard(ctx context.Context, userID uuid.UUID, input identity.On
 
 	var lockedID uuid.UUID
 	var previousName string
-	if err := tx.QueryRow(ctx, `SELECT id,COALESCE(display_name,'') FROM users WHERE id=$1 FOR UPDATE`, userID).Scan(&lockedID, &previousName); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT id,COALESCE(display_name,'') FROM users WHERE id=$1 AND access_status='active' FOR UPDATE`, userID).Scan(&lockedID, &previousName); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return identity.User{}, identity.ErrAccessDenied
+		}
 		return identity.User{}, err
 	}
 
