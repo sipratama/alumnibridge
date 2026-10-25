@@ -59,6 +59,26 @@ func TestDirectoryConsentPrivacyAndSignedJWT(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// Concurrent trusted membership writes must lock the active parent before
+	// taking a membership row. Retry, if needed, starts this whole transaction.
+	updateMembershipStatus := func(owner, membership uuid.UUID, status string) error {
+		tx, err := db.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback(ctx)
+		var active bool
+		if err = tx.QueryRow(ctx, `SELECT access_status='active' FROM users WHERE id=$1 FOR UPDATE`, owner).Scan(&active); err != nil {
+			return err
+		}
+		if !active {
+			return errors.New("membership owner unavailable")
+		}
+		if _, err = tx.Exec(ctx, `UPDATE memberships SET status=$2 WHERE id=$1 AND user_id=$3`, membership, status, owner); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	}
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
@@ -468,8 +488,7 @@ func TestDirectoryConsentPrivacyAndSignedJWT(t *testing.T) {
 		}()
 		go func() {
 			defer wg.Done()
-			_, err := db.Exec(ctx, `UPDATE memberships SET status='pending' WHERE id=$1`, a.membership)
-			errs <- err
+			errs <- updateMembershipStatus(a.id, a.membership, "pending")
 		}()
 		wg.Wait()
 		close(errs)
@@ -497,8 +516,7 @@ func TestDirectoryConsentPrivacyAndSignedJWT(t *testing.T) {
 		revoked.Add(1)
 		go func(id uuid.UUID) {
 			defer revoked.Done()
-			_, err := db.Exec(ctx, `UPDATE memberships SET status='pending' WHERE id=$1`, id)
-			revokeErrors <- err
+			revokeErrors <- updateMembershipStatus(a.id, id, "pending")
 		}(membership)
 	}
 	revoked.Wait()
