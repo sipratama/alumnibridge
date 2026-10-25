@@ -1,12 +1,16 @@
 # Milestone 5 — Identity operations design and issue drafts
 
-**Status:** Design for maintainer review; no M5 implementation or production acceptance.
+**Status:** Bounded development slice approved for review; production identity operations and policy remain open.
 **Date:** 2026-10-25 (Asia/Jakarta).
 **Baseline:** `master` `dc9851f05f0a5ca0db7bd724cd9b1c6f1d84f286` (merged PR #22). Issue #11 remains open for production acceptance. This plan does not close or subsume [#2](https://github.com/sipratama/alumnibridge/issues/2), [#5](https://github.com/sipratama/alumnibridge/issues/5), [#8](https://github.com/sipratama/alumnibridge/issues/8), [#10](https://github.com/sipratama/alumnibridge/issues/10), [#17](https://github.com/sipratama/alumnibridge/issues/17) or [#19](https://github.com/sipratama/alumnibridge/issues/19). The proposed authority and tradeoffs are in [ADR 0004](decisions/0004-identity-operations-boundaries-proposal.md).
 
 ## Maintainer direction (2026-10-25)
 
 The repository maintainer will operate the early project alone. No production hosting provider, platform or deployment topology has been selected. This identifies the current development owner, not a staffed production operations team or a production deployment approval. Provider-neutral topology design and disposable rehearsal may proceed; production issuer/domain, infrastructure, backups, incident coverage and service ownership remain open. Since there is no independent second operator today, do not claim two-person approval or independent audit. Document and rehearse a restricted manual bootstrap with disposable accounts, a known issuer/subject, short grant expiry, recorded reason and restricted audit. Production privileged routes and destructive lifecycle operations remain behind later policy and release gates.
+
+## Approved slice and remaining gates
+
+The maintainer approves provider-neutral disposable Keycloak rehearsal and review of the access-status baseline on [draft PR #24](https://github.com/sipratama/alumnibridge/pull/24): additive migration, current access check before provisioning and on protected routes, fail-closed denial, issuer/subject block schema without a production writer or retention period, and focused tests. This is authorization to review and merge a development baseline only after its own CI and compatibility review. It does not authorize production deployment, a new issuer binding, publication withdrawal, deletion, privileged grant/revoke, or recovery/rebind. An old API binary can ignore new access state; any production rollout needs a write fence and reviewed forward-fix/rollback plan. The other decisions in the matrix remain proposals and must be decided before their dependent operations.
 
 ## Current state versus M5 need
 
@@ -115,4 +119,4 @@ The following titles and bodies are ready for review. Numbers will be assigned o
 
 ## Design review gate
 
-Approve or revise the five decisions above and ADR 0004, then review issue boundaries and order. This draft design PR is for review only. Stop before application code, migrations, Keycloak production changes, GitHub issue creation, merge, deploy or issue closure.
+The provider-neutral rehearsal and access-status development slice above are accepted for separate code review. ADR 0004's production decisions remain open: hosting and issuer migration; admin authority and production bootstrap; deletion, literal-slug and subject-block retention; exceptional recovery/rebind; and audit access and retention. Review each dependent issue against its approved policy before implementing that operation. Merging this design document or PR #24 is not production release acceptance, and does not close Issue #11 or other follow-ups.
