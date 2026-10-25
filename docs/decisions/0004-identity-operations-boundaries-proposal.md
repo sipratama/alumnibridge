@@ -1,7 +1,7 @@
 # ADR 0004 — Identity operations authority and lifecycle (proposal)
 
 Date: 2026-10-25 (Asia/Jakarta).
-Status: **Proposed; maintainer approval required before implementation.**
+Status: **Partially accepted for bounded development work; production policy remains proposed.**
 Scope: Milestone 5 design. This ADR changes no runtime behavior. See the [M5 plan](../milestone-5-identity-operations-plan.md).
 
 ## Context
@@ -14,7 +14,13 @@ Offline JWT verification means Keycloak role removal, user disablement and sessi
 
 The maintainer currently operates the early project alone and has not selected production hosting. This supports provider-neutral design and disposable topology tests; it does not appoint a production on-call team. For the current single-operator phase, use a restricted, manual first-grant procedure with explicit operator identity, reason, expiry, and tamper-evident audit reviewed later; do not offer self-service grants or claim independent approval. Before production privileged operations, approve either a genuinely independent second approver or a documented compensating control, with an external review of its risks and an emergency procedure.
 
-## Proposed decision
+## Decision scope accepted for development (2026-10-25)
+
+The maintainer approves a provider-neutral, disposable Keycloak rehearsal and the application access-status baseline described in the [M5 access slice](../milestone-5-access-status-slice.md) on PR #24. This includes an additive access-state schema, a fail-closed current-state check on protected routes before implicit provisioning, an issuer/subject block schema without a retention or production writer, and signed-token/PostgreSQL tests. Existing users remain active on backfill. A single maintainer may rehearse restricted manual bootstrap with synthetic accounts; this is not approval to activate production administrator routes or grant real users privileged access.
+
+This approval is limited to development and review of those changes. It does not authorize production hosting, issuer migration, retention/purge, lifecycle status writers, public withdrawal/deletion, admin grants, exceptional recovery/rebind, or deployment. PR #24 needs its own code/CI review and rollout assessment. The existing sub-only user key cannot be silently relinked across issuers.
+
+## Proposed production decisions
 
 1. **Authority.** Keycloak owns credentials, authenticator factors, sessions and the OIDC subject within a particular issuer. The application owns member UUIDs, student/alumni claims, verification, profile publication and deletion state. Treat `(issuer, sub)` as the identity boundary in the production design: the current schema stores only `sub`, so an issuer change requires an explicit migration/reconciliation plan rather than an implicit relink. Email never links or restores accounts. Identity recovery must preserve the original issuer and subject where possible; subject replacement needs an exceptional, audited binding procedure, not automatic email matching.
 2. **Deployment.** Use a dedicated production Keycloak realm and database, served through a stable HTTPS issuer behind a configured reverse proxy. Keep the web, API and Keycloak origins and exact callback/logout URI explicit. The API may fetch JWKS over a private route only if tokens retain the same public issuer. Use production Keycloak mode, managed secrets and restricted administration. Do not promote Compose `start-dev`, localhost redirects or the realm import file as a production configuration.
@@ -59,4 +65,4 @@ Rollback after a deletion or subject rebind cannot restore erased credentials, c
 
 ## Review gate
 
-The maintainer may review provider-neutral topology, manual operator procedures and disposable tests while operating the early project alone. Before production privileged operations, approve hosting/issuer ownership and issuer-change policy, administrator authority including a distinct approver or explicit compensating control for first-grant and emergency access, deletion eligibility and retention including name-bearing slugs and non-reprovision markers, recovery proof and rebind policy, and audit retention. The single-operator development procedure is not production approval. This proposal is not evidence that production deployment, recovery, deletion or verification operations work. Issue #11 and the existing follow-up issues remain separate release gates.
+The maintainer may review provider-neutral topology, manual operator procedures and disposable tests while operating the early project alone. Before production privileged operations, approve hosting/issuer ownership and issuer-change policy, administrator authority including a distinct approver or explicit compensating control for first-grant and emergency access, deletion eligibility and retention including name-bearing slugs and non-reprovision markers, recovery proof and rebind policy, and audit retention. The single-operator development procedure is not production approval. This partial acceptance is not evidence that production deployment, recovery, deletion or verification operations work. Issue #11 and the existing follow-up issues remain separate release gates.
