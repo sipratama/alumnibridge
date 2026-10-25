@@ -29,13 +29,37 @@ func missing(err error) error {
 	return err
 }
 
+// Owner writes lock and check the user in the same transaction as their
+// mutation. A lifecycle transition must take this row before dependent rows.
+func lockActiveUser(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
+	var status string
+	if err := tx.QueryRow(ctx, `SELECT access_status FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&status); err != nil {
+		return missing(err)
+	}
+	if status != "active" {
+		return profiles.ErrAccountUnavailable
+	}
+	return nil
+}
+
+func (s *Store) beginActiveUser(ctx context.Context, id uuid.UUID) (pgx.Tx, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := lockActiveUser(ctx, tx, id); err != nil {
+		_ = tx.Rollback(ctx)
+		return nil, err
+	}
+	return tx, nil
+}
+
 func collectionSlot(ctx context.Context, tx pgx.Tx, id uuid.UUID, table string) error {
 	if table != "profile_experiences" && table != "profile_educations" && table != "profile_skills" {
 		return profiles.ErrInvalid
 	}
-	var locked uuid.UUID
-	if err := tx.QueryRow(ctx, `SELECT id FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&locked); err != nil {
-		return missing(err)
+	if err := lockActiveUser(ctx, tx, id); err != nil {
+		return err
 	}
 	var count int
 	if err := tx.QueryRow(ctx, `SELECT count(*) FROM `+table+` WHERE user_id=$1`, id).Scan(&count); err != nil {
@@ -61,7 +85,10 @@ func (s *Store) Profile(ctx context.Context, id uuid.UUID) (profiles.Profile, er
 		return p, err
 	}
 	var name string
-	if err = tx.QueryRow(ctx, `SELECT COALESCE(display_name,'') FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&name); err != nil {
+	if err = lockActiveUser(ctx, tx, id); err != nil {
+		return p, err
+	}
+	if err = tx.QueryRow(ctx, `SELECT COALESCE(display_name,'') FROM users WHERE id=$1`, id).Scan(&name); err != nil {
 		return p, missing(err)
 	}
 	// A second request may have initialized the profile while this transaction waited for the user lock.
@@ -112,9 +139,8 @@ func (s *Store) UpdateProfile(ctx context.Context, id uuid.UUID, change func(pro
 	}
 	defer tx.Rollback(ctx)
 	// Match onboarding and account deletion: lock the parent before its profile.
-	var locked uuid.UUID
-	if err = tx.QueryRow(ctx, `SELECT id FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&locked); err != nil {
-		return p, missing(err)
+	if err = lockActiveUser(ctx, tx, id); err != nil {
+		return p, err
 	}
 	var old string
 	if err = tx.QueryRow(ctx, `SELECT p.slug,COALESCE(u.display_name,''),p.headline,p.bio,p.location,p.current_company,p.current_job_title,p.content_revision FROM profiles p JOIN users u ON u.id=p.user_id WHERE p.user_id=$1 FOR UPDATE OF p`, id).Scan(&p.Slug, &p.DisplayName, &p.Headline, &p.Bio, &p.Location, &p.CurrentCompany, &p.CurrentJobTitle, &p.Revision); err != nil {
@@ -169,7 +195,16 @@ func (s *Store) Experiences(ctx context.Context, id uuid.UUID) ([]profiles.Exper
 func (s *Store) SaveExperience(ctx context.Context, id uuid.UUID, e profiles.Experience, update bool) (profiles.Experience, error) {
 	var err error
 	if update {
-		err = s.db.QueryRow(ctx, `UPDATE profile_experiences SET company=$3,title=$4,employment_type=$5,location=$6,start_date=$7,end_date=$8,is_current=$9,description=$10,updated_at=now() WHERE id=$1 AND user_id=$2 RETURNING id,revision`, e.ID, id, e.Company, e.JobTitle, e.EmploymentType, e.Location, e.StartDate, e.EndDate, e.IsCurrent, e.Description).Scan(&e.ID, &e.Revision)
+		tx, beginErr := s.beginActiveUser(ctx, id)
+		if beginErr != nil {
+			return e, beginErr
+		}
+		defer tx.Rollback(ctx)
+		err = tx.QueryRow(ctx, `UPDATE profile_experiences SET company=$3,title=$4,employment_type=$5,location=$6,start_date=$7,end_date=$8,is_current=$9,description=$10,updated_at=now() WHERE id=$1 AND user_id=$2 RETURNING id,revision`, e.ID, id, e.Company, e.JobTitle, e.EmploymentType, e.Location, e.StartDate, e.EndDate, e.IsCurrent, e.Description).Scan(&e.ID, &e.Revision)
+		if err != nil {
+			return e, missing(dbError(err))
+		}
+		return e, tx.Commit(ctx)
 	} else {
 		tx, beginErr := s.db.Begin(ctx)
 		if beginErr != nil {
@@ -185,17 +220,21 @@ func (s *Store) SaveExperience(ctx context.Context, id uuid.UUID, e profiles.Exp
 		}
 		return e, tx.Commit(ctx)
 	}
-	return e, missing(dbError(err))
 }
 func (s *Store) DeleteExperience(ctx context.Context, id, item uuid.UUID) error {
-	tag, err := s.db.Exec(ctx, `DELETE FROM profile_experiences WHERE id=$1 AND user_id=$2`, item, id)
+	tx, err := s.beginActiveUser(ctx, id)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	tag, err := tx.Exec(ctx, `DELETE FROM profile_experiences WHERE id=$1 AND user_id=$2`, item, id)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
 		return profiles.ErrNotFound
 	}
-	return nil
+	return tx.Commit(ctx)
 }
 func (s *Store) Educations(ctx context.Context, id uuid.UUID) ([]profiles.Education, error) {
 	rows, err := s.db.Query(ctx, `SELECT id,institution_name,degree,field_of_study,start_date::text,end_date::text,description,revision FROM profile_educations WHERE user_id=$1 ORDER BY start_date DESC NULLS LAST,id LIMIT 100`, id)
@@ -216,7 +255,16 @@ func (s *Store) Educations(ctx context.Context, id uuid.UUID) ([]profiles.Educat
 func (s *Store) SaveEducation(ctx context.Context, id uuid.UUID, e profiles.Education, update bool) (profiles.Education, error) {
 	var err error
 	if update {
-		err = s.db.QueryRow(ctx, `UPDATE profile_educations SET institution_name=$3,degree=$4,field_of_study=$5,start_date=$6,end_date=$7,description=$8,updated_at=now() WHERE id=$1 AND user_id=$2 RETURNING id,revision`, e.ID, id, e.Institution, e.Degree, e.FieldOfStudy, e.StartDate, e.EndDate, e.Description).Scan(&e.ID, &e.Revision)
+		tx, beginErr := s.beginActiveUser(ctx, id)
+		if beginErr != nil {
+			return e, beginErr
+		}
+		defer tx.Rollback(ctx)
+		err = tx.QueryRow(ctx, `UPDATE profile_educations SET institution_name=$3,degree=$4,field_of_study=$5,start_date=$6,end_date=$7,description=$8,updated_at=now() WHERE id=$1 AND user_id=$2 RETURNING id,revision`, e.ID, id, e.Institution, e.Degree, e.FieldOfStudy, e.StartDate, e.EndDate, e.Description).Scan(&e.ID, &e.Revision)
+		if err != nil {
+			return e, missing(dbError(err))
+		}
+		return e, tx.Commit(ctx)
 	} else {
 		tx, beginErr := s.db.Begin(ctx)
 		if beginErr != nil {
@@ -232,17 +280,21 @@ func (s *Store) SaveEducation(ctx context.Context, id uuid.UUID, e profiles.Educ
 		}
 		return e, tx.Commit(ctx)
 	}
-	return e, missing(dbError(err))
 }
 func (s *Store) DeleteEducation(ctx context.Context, id, item uuid.UUID) error {
-	tag, err := s.db.Exec(ctx, `DELETE FROM profile_educations WHERE id=$1 AND user_id=$2`, item, id)
+	tx, err := s.beginActiveUser(ctx, id)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	tag, err := tx.Exec(ctx, `DELETE FROM profile_educations WHERE id=$1 AND user_id=$2`, item, id)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
 		return profiles.ErrNotFound
 	}
-	return nil
+	return tx.Commit(ctx)
 }
 func (s *Store) SearchSkills(ctx context.Context, q string, limit int) ([]profiles.Skill, error) {
 	rows, err := s.db.Query(ctx, `SELECT id,name FROM skills WHERE normalized_name LIKE $1 ESCAPE '\' ORDER BY normalized_name,id LIMIT $2`, strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(q, "\\", "\\\\"), "%", "\\%"), "_", "\\_"))+"%", limit)
@@ -277,7 +329,7 @@ func (s *Store) Skills(ctx context.Context, id uuid.UUID) ([]profiles.Skill, err
 	return out, rows.Err()
 }
 func (s *Store) AddSkill(ctx context.Context, id uuid.UUID, name, key string) (profiles.Skill, error) {
-	tx, err := s.db.Begin(ctx)
+	tx, err := s.beginActiveUser(ctx, id)
 	if err != nil {
 		return profiles.Skill{}, err
 	}
@@ -291,10 +343,6 @@ func (s *Store) AddSkill(ctx context.Context, id uuid.UUID, name, key string) (p
 	// Serialize this owner's set operations before checking whether a link
 	// already exists. Otherwise an add can return success for a link that a
 	// concurrent delete removed before the add committed.
-	var locked uuid.UUID
-	if err = tx.QueryRow(ctx, `SELECT id FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&locked); err != nil {
-		return profiles.Skill{}, missing(err)
-	}
 	var linkID uuid.UUID
 	err = tx.QueryRow(ctx, `SELECT id FROM profile_skills WHERE user_id=$1 AND skill_id=$2`, id, skillID).Scan(&linkID)
 	if err == nil {
@@ -318,9 +366,8 @@ func (s *Store) DeleteSkill(ctx context.Context, id, item uuid.UUID) error {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	var locked uuid.UUID
-	if err = tx.QueryRow(ctx, `SELECT id FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&locked); err != nil {
-		return missing(err)
+	if err = lockActiveUser(ctx, tx, id); err != nil {
+		return err
 	}
 	tag, err := tx.Exec(ctx, `DELETE FROM profile_skills WHERE id=$1 AND user_id=$2`, item, id)
 	if err != nil {
@@ -339,9 +386,8 @@ func (s *Store) UpdateProfileRevision(ctx context.Context, id uuid.UUID, expecte
 	}
 	defer tx.Rollback(ctx)
 	var p profiles.Profile
-	var locked uuid.UUID
-	if err = tx.QueryRow(ctx, `SELECT id FROM users WHERE id=$1 FOR UPDATE`, id).Scan(&locked); err != nil {
-		return p, missing(err)
+	if err = lockActiveUser(ctx, tx, id); err != nil {
+		return p, err
 	}
 	err = tx.QueryRow(ctx, `SELECT p.slug,COALESCE(u.display_name,''),p.headline,p.bio,p.location,p.current_company,p.current_job_title,p.content_revision FROM profiles p JOIN users u ON u.id=p.user_id WHERE p.user_id=$1 FOR UPDATE OF p`, id).Scan(&p.Slug, &p.DisplayName, &p.Headline, &p.Bio, &p.Location, &p.CurrentCompany, &p.CurrentJobTitle, &p.Revision)
 	if err != nil {
@@ -383,18 +429,34 @@ func (s *Store) UpdateProfileRevision(ctx context.Context, id uuid.UUID, expecte
 	return p, nil
 }
 func (s *Store) SaveExperienceRevision(ctx context.Context, id uuid.UUID, e profiles.Experience, expected int64) (profiles.Experience, error) {
-	err := s.db.QueryRow(ctx, `UPDATE profile_experiences SET company=$3,title=$4,employment_type=$5,location=$6,start_date=$7,end_date=$8,is_current=$9,description=$10,updated_at=now() WHERE id=$1 AND user_id=$2 AND revision=$11 RETURNING id,revision`, e.ID, id, e.Company, e.JobTitle, e.EmploymentType, e.Location, e.StartDate, e.EndDate, e.IsCurrent, e.Description, expected).Scan(&e.ID, &e.Revision)
+	tx, err := s.beginActiveUser(ctx, id)
+	if err != nil {
+		return e, err
+	}
+	defer tx.Rollback(ctx)
+	err = tx.QueryRow(ctx, `UPDATE profile_experiences SET company=$3,title=$4,employment_type=$5,location=$6,start_date=$7,end_date=$8,is_current=$9,description=$10,updated_at=now() WHERE id=$1 AND user_id=$2 AND revision=$11 RETURNING id,revision`, e.ID, id, e.Company, e.JobTitle, e.EmploymentType, e.Location, e.StartDate, e.EndDate, e.IsCurrent, e.Description, expected).Scan(&e.ID, &e.Revision)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return e, s.itemRevisionError(ctx, "profile_experiences", id, e.ID)
 	}
-	return e, dbError(err)
+	if err != nil {
+		return e, dbError(err)
+	}
+	return e, tx.Commit(ctx)
 }
 func (s *Store) SaveEducationRevision(ctx context.Context, id uuid.UUID, e profiles.Education, expected int64) (profiles.Education, error) {
-	err := s.db.QueryRow(ctx, `UPDATE profile_educations SET institution_name=$3,degree=$4,field_of_study=$5,start_date=$6,end_date=$7,description=$8,updated_at=now() WHERE id=$1 AND user_id=$2 AND revision=$9 RETURNING id,revision`, e.ID, id, e.Institution, e.Degree, e.FieldOfStudy, e.StartDate, e.EndDate, e.Description, expected).Scan(&e.ID, &e.Revision)
+	tx, err := s.beginActiveUser(ctx, id)
+	if err != nil {
+		return e, err
+	}
+	defer tx.Rollback(ctx)
+	err = tx.QueryRow(ctx, `UPDATE profile_educations SET institution_name=$3,degree=$4,field_of_study=$5,start_date=$6,end_date=$7,description=$8,updated_at=now() WHERE id=$1 AND user_id=$2 AND revision=$9 RETURNING id,revision`, e.ID, id, e.Institution, e.Degree, e.FieldOfStudy, e.StartDate, e.EndDate, e.Description, expected).Scan(&e.ID, &e.Revision)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return e, s.itemRevisionError(ctx, "profile_educations", id, e.ID)
 	}
-	return e, dbError(err)
+	if err != nil {
+		return e, dbError(err)
+	}
+	return e, tx.Commit(ctx)
 }
 func (s *Store) itemRevisionError(ctx context.Context, table string, owner, item uuid.UUID) error {
 	if table != "profile_educations" && table != "profile_experiences" {
@@ -411,22 +473,32 @@ func (s *Store) itemRevisionError(ctx context.Context, table string, owner, item
 	return profiles.ErrNotFound
 }
 func (s *Store) DeleteExperienceRevision(ctx context.Context, id, item uuid.UUID, revision int64) error {
-	tag, err := s.db.Exec(ctx, `DELETE FROM profile_experiences WHERE id=$1 AND user_id=$2 AND revision=$3`, item, id, revision)
+	tx, err := s.beginActiveUser(ctx, id)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	tag, err := tx.Exec(ctx, `DELETE FROM profile_experiences WHERE id=$1 AND user_id=$2 AND revision=$3`, item, id, revision)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
 		return s.itemRevisionError(ctx, "profile_experiences", id, item)
 	}
-	return nil
+	return tx.Commit(ctx)
 }
 func (s *Store) DeleteEducationRevision(ctx context.Context, id, item uuid.UUID, revision int64) error {
-	tag, err := s.db.Exec(ctx, `DELETE FROM profile_educations WHERE id=$1 AND user_id=$2 AND revision=$3`, item, id, revision)
+	tx, err := s.beginActiveUser(ctx, id)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	tag, err := tx.Exec(ctx, `DELETE FROM profile_educations WHERE id=$1 AND user_id=$2 AND revision=$3`, item, id, revision)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() == 0 {
 		return s.itemRevisionError(ctx, "profile_educations", id, item)
 	}
-	return nil
+	return tx.Commit(ctx)
 }

@@ -56,17 +56,39 @@ func (s *Store) Privacy(ctx context.Context, id uuid.UUID) (profiles.Privacy, er
 	return scanPrivacy(s.db.QueryRow(ctx, `SELECT `+privacyColumns+` FROM profiles WHERE user_id=$1`, id))
 }
 func (s *Store) UpdatePrivacy(ctx context.Context, id uuid.UUID, p profiles.PrivacyPatch) (profiles.Privacy, error) {
-	return scanPrivacy(s.db.QueryRow(ctx, `UPDATE profiles SET visibility=$2,show_bio=COALESCE($3,show_bio),show_location=COALESCE($4,show_location),show_current_company=COALESCE($5,show_current_company),show_current_job_title=COALESCE($6,show_current_job_title),show_experiences=COALESCE($7,show_experiences),show_educations=COALESCE($8,show_educations),show_skills=COALESCE($9,show_skills),show_photo=COALESCE($10,show_photo),privacy_revision=privacy_revision+1,updated_at=now() WHERE user_id=$1 RETURNING `+privacyColumns, id, p.Visibility, p.ShowBio, p.ShowLocation, p.ShowCurrentCompany, p.ShowCurrentJobTitle, p.ShowExperiences, p.ShowEducations, p.ShowSkills, p.ShowPhoto))
+	tx, err := s.beginActiveUser(ctx, id)
+	if err != nil {
+		return profiles.Privacy{}, err
+	}
+	defer tx.Rollback(ctx)
+	out, err := scanPrivacy(tx.QueryRow(ctx, `UPDATE profiles SET visibility=$2,show_bio=COALESCE($3,show_bio),show_location=COALESCE($4,show_location),show_current_company=COALESCE($5,show_current_company),show_current_job_title=COALESCE($6,show_current_job_title),show_experiences=COALESCE($7,show_experiences),show_educations=COALESCE($8,show_educations),show_skills=COALESCE($9,show_skills),show_photo=COALESCE($10,show_photo),privacy_revision=privacy_revision+1,updated_at=now() WHERE user_id=$1 RETURNING `+privacyColumns, id, p.Visibility, p.ShowBio, p.ShowLocation, p.ShowCurrentCompany, p.ShowCurrentJobTitle, p.ShowExperiences, p.ShowEducations, p.ShowSkills, p.ShowPhoto))
+	if err != nil {
+		return out, err
+	}
+	return out, tx.Commit(ctx)
 }
+
 // SQL predicate and revision increment are one statement: no stale side effects.
 func (s *Store) UpdatePrivacyConditional(ctx context.Context, id uuid.UUID, p profiles.PrivacyPatch, expected int64) (profiles.Privacy, error) {
- out, err := scanPrivacy(s.db.QueryRow(ctx, `UPDATE profiles SET visibility=$2,show_bio=COALESCE($3,show_bio),show_location=COALESCE($4,show_location),show_current_company=COALESCE($5,show_current_company),show_current_job_title=COALESCE($6,show_current_job_title),show_experiences=COALESCE($7,show_experiences),show_educations=COALESCE($8,show_educations),show_skills=COALESCE($9,show_skills),show_photo=COALESCE($10,show_photo),privacy_revision=privacy_revision+1,updated_at=now() WHERE user_id=$1 AND privacy_revision=$11 RETURNING `+privacyColumns, id,p.Visibility,p.ShowBio,p.ShowLocation,p.ShowCurrentCompany,p.ShowCurrentJobTitle,p.ShowExperiences,p.ShowEducations,p.ShowSkills,p.ShowPhoto,expected))
- if err == profiles.ErrNotFound {
-  var exists bool
-  if qerr := s.db.QueryRow(ctx,`SELECT EXISTS(SELECT 1 FROM profiles WHERE user_id=$1)`,id).Scan(&exists); qerr != nil {return out,qerr}
-  if exists {return out,profiles.ErrStale}
- }
- return out,err
+	tx, err := s.beginActiveUser(ctx, id)
+	if err != nil {
+		return profiles.Privacy{}, err
+	}
+	defer tx.Rollback(ctx)
+	out, err := scanPrivacy(tx.QueryRow(ctx, `UPDATE profiles SET visibility=$2,show_bio=COALESCE($3,show_bio),show_location=COALESCE($4,show_location),show_current_company=COALESCE($5,show_current_company),show_current_job_title=COALESCE($6,show_current_job_title),show_experiences=COALESCE($7,show_experiences),show_educations=COALESCE($8,show_educations),show_skills=COALESCE($9,show_skills),show_photo=COALESCE($10,show_photo),privacy_revision=privacy_revision+1,updated_at=now() WHERE user_id=$1 AND privacy_revision=$11 RETURNING `+privacyColumns, id, p.Visibility, p.ShowBio, p.ShowLocation, p.ShowCurrentCompany, p.ShowCurrentJobTitle, p.ShowExperiences, p.ShowEducations, p.ShowSkills, p.ShowPhoto, expected))
+	if err == profiles.ErrNotFound {
+		var exists bool
+		if qerr := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM profiles WHERE user_id=$1)`, id).Scan(&exists); qerr != nil {
+			return out, qerr
+		}
+		if exists {
+			return out, profiles.ErrStale
+		}
+	}
+	if err != nil {
+		return out, err
+	}
+	return out, tx.Commit(ctx)
 }
 func (s *Store) OwnerPhoto(ctx context.Context, id uuid.UUID) (profiles.Photo, error) {
 	var p profiles.Photo
@@ -74,11 +96,18 @@ func (s *Store) OwnerPhoto(ctx context.Context, id uuid.UUID) (profiles.Photo, e
 	return p, missing(err)
 }
 func (s *Store) StagePhoto(ctx context.Context, id uuid.UUID, p profiles.Photo) error {
-	_, err := s.db.Exec(ctx, `INSERT INTO profile_photo_objects(object_key,owner_id,state,content_type,size_bytes) VALUES($1,$2,'staging',$3,$4)`, p.Key, id, p.ContentType, p.Size)
-	return err
+	tx, err := s.beginActiveUser(ctx, id)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err = tx.Exec(ctx, `INSERT INTO profile_photo_objects(object_key,owner_id,state,content_type,size_bytes) VALUES($1,$2,'staging',$3,$4)`, p.Key, id, p.ContentType, p.Size); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 func (s *Store) ActivatePhoto(ctx context.Context, id uuid.UUID, key string) error {
-	tx, err := s.db.Begin(ctx)
+	tx, err := s.beginActiveUser(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -111,7 +140,7 @@ func (s *Store) ActivatePhoto(ctx context.Context, id uuid.UUID, key string) err
 	return tx.Commit(ctx)
 }
 func (s *Store) RemovePhoto(ctx context.Context, id uuid.UUID) error {
-	tx, err := s.db.Begin(ctx)
+	tx, err := s.beginActiveUser(ctx, id)
 	if err != nil {
 		return err
 	}

@@ -38,18 +38,20 @@ func (s *Store) Discovery(ctx context.Context, owner uuid.UUID) (profiles.Discov
 	return scanDiscovery(s.db.QueryRow(ctx, discoverySQL, owner))
 }
 func (s *Store) UpdateDiscovery(ctx context.Context, owner uuid.UUID, patch profiles.DiscoveryPatch) (profiles.Discovery, error) {
- return s.updateDiscovery(ctx, owner, patch, 0)
+	return s.updateDiscovery(ctx, owner, patch, 0)
 }
 func (s *Store) UpdateDiscoveryConditional(ctx context.Context, owner uuid.UUID, patch profiles.DiscoveryPatch, expected int64) (profiles.Discovery, error) {
- if expected < 1 { return profiles.Discovery{}, profiles.ErrInvalid }
- return s.updateDiscovery(ctx, owner, patch, expected)
+	if expected < 1 {
+		return profiles.Discovery{}, profiles.ErrInvalid
+	}
+	return s.updateDiscovery(ctx, owner, patch, expected)
 }
 func (s *Store) updateDiscovery(ctx context.Context, owner uuid.UUID, patch profiles.DiscoveryPatch, expected int64) (profiles.Discovery, error) {
 	// Validate at the persistence boundary as well as the service boundary.
 	if err := patch.Validate(); err != nil {
 		return profiles.Discovery{}, err
 	}
-	tx, err := s.db.Begin(ctx)
+	tx, err := s.beginActiveUser(ctx, owner)
 	if err != nil {
 		return profiles.Discovery{}, err
 	}
@@ -73,11 +75,13 @@ func (s *Store) updateDiscovery(ctx context.Context, owner uuid.UUID, patch prof
 	}
 	var visibility, moderation string
 	var consent bool
- var revision int64
+	var revision int64
 	if err = tx.QueryRow(ctx, `SELECT visibility,moderation_status,directory_discoverable,privacy_revision FROM profiles WHERE user_id=$1 FOR UPDATE`, owner).Scan(&visibility, &moderation, &consent, &revision); err != nil {
 		return profiles.Discovery{}, missing(err)
 	}
- if expected > 0 && revision != expected {return profiles.Discovery{},profiles.ErrStale}
+	if expected > 0 && revision != expected {
+		return profiles.Discovery{}, profiles.ErrStale
+	}
 	var verified bool
 	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM memberships WHERE user_id=$1 AND role='alumni' AND status='verified')`, owner).Scan(&verified); err != nil {
 		return profiles.Discovery{}, err
@@ -107,8 +111,10 @@ func (s *Store) updateDiscovery(ctx context.Context, owner uuid.UUID, patch prof
 	if tag, updateErr := tx.Exec(ctx, `UPDATE profiles SET directory_discoverable=$2,
         directory_consented_at=CASE WHEN $2 THEN COALESCE(directory_consented_at,now()) ELSE NULL END,
         privacy_revision=privacy_revision+1,updated_at=now() WHERE user_id=$1 AND ($3=0 OR privacy_revision=$3)`, owner, consent, expected); updateErr != nil {
-        return profiles.Discovery{}, updateErr
-    } else if tag.RowsAffected() != 1 { return profiles.Discovery{},profiles.ErrStale }
+		return profiles.Discovery{}, updateErr
+	} else if tag.RowsAffected() != 1 {
+		return profiles.Discovery{}, profiles.ErrStale
+	}
 	if patch.Affiliations != nil {
 		if _, err = tx.Exec(ctx, `DELETE FROM profile_directory_affiliations a USING memberships m WHERE a.membership_id=m.id AND m.user_id=$1`, owner); err != nil {
 			return profiles.Discovery{}, err

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/sipratama/alumnibridge/apps/api/internal/profiles"
 )
@@ -24,7 +23,7 @@ func TestAccountDeletionVersusPhotoActivation(t *testing.T) {
 	for _, holdProfile := range []bool{false, true} {
 		name := "delete_before_activation"
 		if holdProfile {
-			name = "deadlock_requires_whole_transaction_retry"
+			name = "user_lock_serializes_activation_before_profile"
 		}
 		t.Run(name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -86,9 +85,8 @@ func TestAccountDeletionVersusPhotoActivation(t *testing.T) {
 					t.Fatalf("activation after account deletion: %v", err)
 				}
 			} else {
-				// Deletion holds parent then profile, while activation will hold the
-				// staged object then wait for that profile. The FK ON DELETE SET NULL
-				// subsequently needs the staged-object lock.
+				// Activation now takes the user lock before staging and profile.
+				// Deletion can hold user and profile without an object/profile inversion.
 				tx, err := deleteDB.Begin(ctx)
 				if err != nil {
 					t.Fatal(err)
@@ -101,34 +99,15 @@ func TestAccountDeletionVersusPhotoActivation(t *testing.T) {
 					t.Fatal(err)
 				}
 				close(storage.release)
-				waitForPhotoActivationLock(t, ctx, deleteDB, pid)
-				deleteDone := make(chan error, 1)
-				go func() {
-					_, err := tx.Exec(ctx, `DELETE FROM users WHERE id=$1`, owner)
-					if err == nil {
-						err = tx.Commit(ctx)
-					} else {
-						_ = tx.Rollback(ctx)
-					}
-					deleteDone <- err
-				}()
-				uploadErr := <-uploadDone
-				deleteErr = <-deleteDone
-				t.Logf("activation_deadlock=%t deletion_deadlock=%t", pgCode(uploadErr, "40P01"), pgCode(deleteErr, "40P01"))
-				if !pgCode(uploadErr, "40P01") && !pgCode(deleteErr, "40P01") {
-					t.Fatalf("expected reproducible lock inversion: upload=%v delete=%v", uploadErr, deleteErr)
+				waitForBackendLock(t, ctx, deleteDB, pid)
+				if _, err := tx.Exec(ctx, `DELETE FROM users WHERE id=$1`, owner); err != nil {
+					t.Fatal(err)
 				}
-				if uploadErr != nil && !pgCode(uploadErr, "40P01") {
-					t.Fatalf("unexpected activation failure: %v", uploadErr)
+				if err := tx.Commit(ctx); err != nil {
+					t.Fatal(err)
 				}
-				if deleteErr != nil {
-					if !pgCode(deleteErr, "40P01") {
-						t.Fatalf("unexpected deletion failure: %v", deleteErr)
-					}
-					// Retry the entire trusted deletion transaction after its abort.
-					if _, err := deleteDB.Exec(ctx, `DELETE FROM users WHERE id=$1`, owner); err != nil {
-						t.Fatalf("whole-transaction deletion retry: %v", err)
-					}
+				if err := <-uploadDone; !errors.Is(err, profiles.ErrNotFound) {
+					t.Fatalf("activation after serialized deletion: %v", err)
 				}
 			}
 
@@ -167,7 +146,7 @@ func TestAccountDeletionVersusPhotoActivation(t *testing.T) {
 	}
 }
 
-func waitForPhotoActivationLock(t *testing.T, ctx context.Context, monitor *pgxpool.Pool, pid int) {
+func waitForBackendLock(t *testing.T, ctx context.Context, monitor *pgxpool.Pool, pid int) {
 	t.Helper()
 	for {
 		var wait *string
@@ -179,13 +158,8 @@ func waitForPhotoActivationLock(t *testing.T, ctx context.Context, monitor *pgxp
 		}
 		select {
 		case <-ctx.Done():
-			t.Fatal("activation did not wait on the profile lock: ", ctx.Err())
+			t.Fatal("backend did not wait on a row lock: ", ctx.Err())
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
-}
-
-func pgCode(err error, code string) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == code
 }

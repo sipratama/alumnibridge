@@ -290,3 +290,143 @@ func TestProvisionWaitsForIssuerSubjectBlock(t *testing.T) {
 		t.Fatalf("active account after block commit: count=%d err=%v", active, err)
 	}
 }
+
+func TestBlockWriterWaitsForFirstProvision(t *testing.T) {
+	url := os.Getenv("TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("TEST_DATABASE_URL not set")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	db, err := pgxpool.New(ctx, url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	issuer := "https://access-test.example/realms/alumnibridge"
+	subject := "provision-first-" + uuid.NewString()
+	t.Cleanup(func() {
+		cleanup, done := context.WithTimeout(context.Background(), 5*time.Second)
+		defer done()
+		if _, err := db.Exec(cleanup, `DELETE FROM identity_subject_blocks WHERE issuer=$1 AND subject=$2`, issuer, subject); err != nil {
+			t.Error(err)
+		}
+		if _, err := db.Exec(cleanup, `DELETE FROM users WHERE oidc_subject=$1`, subject); err != nil {
+			t.Error(err)
+		}
+		db.Close()
+	})
+	config, err := pgxpool.ParseConfig(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.MaxConns = 1
+	provisionDB, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer provisionDB.Close()
+	writerDB, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writerDB.Close()
+	var provisionPID, writerPID int
+	if err := provisionDB.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&provisionPID); err != nil {
+		t.Fatal(err)
+	}
+	if err := writerDB.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&writerPID); err != nil {
+		t.Fatal(err)
+	}
+	// Hold the users table so Provision owns the advisory lock but cannot commit yet.
+	hold, err := db.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer hold.Rollback(ctx)
+	if _, err := hold.Exec(ctx, `LOCK TABLE users IN SHARE MODE`); err != nil {
+		t.Fatal(err)
+	}
+	provisionDone := make(chan error, 1)
+	go func() {
+		_, err := New(provisionDB, issuer).Provision(ctx, subject, "first@example.invalid")
+		provisionDone <- err
+	}()
+	waitForAccessLock(t, ctx, db, provisionPID)
+	writerLocked := make(chan struct{})
+	releaseWriter := make(chan struct{})
+	writerDone := make(chan error, 1)
+	go func() {
+		tx, err := writerDB.Begin(ctx)
+		if err != nil {
+			writerDone <- err
+			return
+		}
+		defer tx.Rollback(ctx)
+		if _, err = tx.Exec(ctx, subjectAdvisoryLockSQL, issuer, subject); err != nil {
+			writerDone <- err
+			return
+		}
+		close(writerLocked)
+		select {
+		case <-releaseWriter:
+		case <-ctx.Done():
+			writerDone <- ctx.Err()
+			return
+		}
+		// The synthetic lifecycle writer must block the now-existing row in its
+		// own transaction before committing the issuer/subject marker.
+		if _, err = tx.Exec(ctx, `UPDATE users SET access_status='deleted' WHERE oidc_subject=$1`, subject); err != nil {
+			writerDone <- err
+			return
+		}
+		if _, err = tx.Exec(ctx, `INSERT INTO identity_subject_blocks(issuer,subject) VALUES($1,$2)`, issuer, subject); err != nil {
+			writerDone <- err
+			return
+		}
+		writerDone <- tx.Commit(ctx)
+	}()
+	waitForAccessLock(t, ctx, db, writerPID)
+	if err := hold.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-provisionDone; err != nil {
+		t.Fatalf("first provision: %v", err)
+	}
+	select {
+	case <-writerLocked:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	var active int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM users WHERE oidc_subject=$1 AND access_status='active'`, subject).Scan(&active); err != nil || active != 1 {
+		t.Fatalf("provision did not win first: %d %v", active, err)
+	}
+	close(releaseWriter)
+	if err := <-writerDone; err != nil {
+		t.Fatalf("synthetic writer: %v", err)
+	}
+	if _, err := New(provisionDB, issuer).Provision(ctx, subject, "second@example.invalid"); !errors.Is(err, identity.ErrAccessDenied) {
+		t.Fatalf("post-block provision: %v", err)
+	}
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM users WHERE oidc_subject=$1 AND access_status='active'`, subject).Scan(&active); err != nil || active != 0 {
+		t.Fatalf("active user after block commit: %d %v", active, err)
+	}
+}
+
+func waitForAccessLock(t *testing.T, ctx context.Context, db *pgxpool.Pool, pid int) {
+	t.Helper()
+	for {
+		var waitType string
+		if err := db.QueryRow(ctx, `SELECT COALESCE(wait_event_type,'') FROM pg_stat_activity WHERE pid=$1`, pid).Scan(&waitType); err != nil {
+			t.Fatal(err)
+		}
+		if waitType == "Lock" {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("backend did not wait on a lock: ", ctx.Err())
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}

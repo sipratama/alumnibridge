@@ -184,6 +184,21 @@ func TestMembershipRevisionInvalidation(t *testing.T) {
 	if err := b.Rollback(ctx); err != nil {
 		t.Fatal(err)
 	}
+	// Retry the complete trusted membership transaction on a fresh snapshot.
+	retry, err := db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer retry.Rollback(ctx)
+	if _, err := retry.Exec(ctx, `UPDATE memberships SET graduation_year=2023 WHERE id=$1`, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := retry.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := request(http.MethodGet, path, "", "", 200).Header().Get("ETag"); got == afterYearChange {
+		t.Fatal("whole-transaction retry did not advance discovery ETag")
+	}
 
 	// Independent connections racing over the last two verified memberships
 	// cannot both commit while leaving an active directory opt-in.

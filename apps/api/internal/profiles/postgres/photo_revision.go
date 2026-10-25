@@ -11,7 +11,7 @@ import (
 // profile-content comparison and pointer swap occur in the same transaction;
 // a stale upload never marks its staged object active or replaces a newer photo.
 func (s *Store) ActivatePhotoConditional(ctx context.Context, owner uuid.UUID, key string, expected int64) (int64, error) {
-	tx, err := s.db.Begin(ctx)
+	tx, err := s.beginActiveUser(ctx, owner)
 	if err != nil {
 		return 0, err
 	}
@@ -52,7 +52,7 @@ func (s *Store) ActivatePhotoConditional(ctx context.Context, owner uuid.UUID, k
 }
 
 func (s *Store) RemovePhotoConditional(ctx context.Context, owner uuid.UUID, expected int64) (int64, error) {
-	tx, err := s.db.Begin(ctx)
+	tx, err := s.beginActiveUser(ctx, owner)
 	if err != nil {
 		return 0, err
 	}

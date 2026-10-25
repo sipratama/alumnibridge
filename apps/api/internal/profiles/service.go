@@ -16,6 +16,7 @@ var ErrInvalid = errors.New("invalid profile input")
 var ErrNotFound = errors.New("profile resource not found")
 var ErrConflict = errors.New("profile conflict")
 var ErrStale = errors.New("stale resource revision")
+var ErrAccountUnavailable = errors.New("account unavailable")
 
 var slugPattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 var reserved = map[string]bool{"api": true, "admin": true, "auth": true, "in": true, "me": true, "settings": true, "dashboard": true, "login": true, "logout": true, "register": true, "onboarding": true, "profile": true, "profiles": true}
@@ -29,7 +30,7 @@ type Profile struct {
 	CurrentCompany  string `json:"current_company"`
 	CurrentJobTitle string `json:"current_job_title"`
 	Completeness    int    `json:"completeness"`
- Revision int64 `json:"-"`
+	Revision        int64  `json:"-"`
 }
 type ProfilePatch struct {
 	DisplayName     *string `json:"display_name"`
@@ -41,7 +42,7 @@ type ProfilePatch struct {
 	CurrentJobTitle *string `json:"current_job_title"`
 }
 type Experience struct {
- Revision int64 `json:"revision"`
+	Revision       int64     `json:"revision"`
 	ID             uuid.UUID `json:"id"`
 	Company        string    `json:"company"`
 	JobTitle       string    `json:"job_title"`
@@ -53,7 +54,7 @@ type Experience struct {
 	Description    string    `json:"description"`
 }
 type Education struct {
- Revision int64 `json:"revision"`
+	Revision     int64     `json:"revision"`
 	ID           uuid.UUID `json:"id"`
 	Institution  string    `json:"institution"`
 	Degree       string    `json:"degree"`
@@ -82,13 +83,14 @@ type Store interface {
 	AddSkill(context.Context, uuid.UUID, string, string) (Skill, error)
 	DeleteSkill(context.Context, uuid.UUID, uuid.UUID) error
 }
+
 // RevisionStore implements atomic conditional writes across all editable owner resources.
 type RevisionStore interface {
- UpdateProfileRevision(context.Context, uuid.UUID, int64, func(Profile) (Profile,error)) (Profile,error)
- SaveExperienceRevision(context.Context,uuid.UUID,Experience,int64)(Experience,error)
- SaveEducationRevision(context.Context,uuid.UUID,Education,int64)(Education,error)
- DeleteExperienceRevision(context.Context,uuid.UUID,uuid.UUID,int64) error
- DeleteEducationRevision(context.Context,uuid.UUID,uuid.UUID,int64) error
+	UpdateProfileRevision(context.Context, uuid.UUID, int64, func(Profile) (Profile, error)) (Profile, error)
+	SaveExperienceRevision(context.Context, uuid.UUID, Experience, int64) (Experience, error)
+	SaveEducationRevision(context.Context, uuid.UUID, Education, int64) (Education, error)
+	DeleteExperienceRevision(context.Context, uuid.UUID, uuid.UUID, int64) error
+	DeleteEducationRevision(context.Context, uuid.UUID, uuid.UUID, int64) error
 }
 type Service struct{ store Store }
 
@@ -152,22 +154,68 @@ func (s *Service) UpdateProfile(ctx context.Context, id uuid.UUID, in ProfilePat
 	return s.Profile(ctx, id)
 }
 
-func (s *Service) UpdateProfileRevision(ctx context.Context,id uuid.UUID,in ProfilePatch,revision int64)(Profile,error){
- if revision<1{return Profile{},ErrInvalid}
- store,ok:=s.store.(RevisionStore);if !ok{return Profile{},ErrInvalid}
- if _,err:=store.UpdateProfileRevision(ctx,id,revision,func(p Profile)(Profile,error){return ApplyProfilePatch(p,in)});err!=nil{return Profile{},err}
- return s.Profile(ctx,id)
+func (s *Service) UpdateProfileRevision(ctx context.Context, id uuid.UUID, in ProfilePatch, revision int64) (Profile, error) {
+	if revision < 1 {
+		return Profile{}, ErrInvalid
+	}
+	store, ok := s.store.(RevisionStore)
+	if !ok {
+		return Profile{}, ErrInvalid
+	}
+	if _, err := store.UpdateProfileRevision(ctx, id, revision, func(p Profile) (Profile, error) { return ApplyProfilePatch(p, in) }); err != nil {
+		return Profile{}, err
+	}
+	return s.Profile(ctx, id)
 }
-func (s *Service) SaveExperienceRevision(ctx context.Context,id uuid.UUID,e Experience,revision int64)(Experience,error){
- if revision<1{return e,ErrInvalid}; e,err:=NormalizeExperience(e);if err!=nil{return e,err}
- st,ok:=s.store.(RevisionStore);if !ok{return e,ErrInvalid};return st.SaveExperienceRevision(ctx,id,e,revision)
+func (s *Service) SaveExperienceRevision(ctx context.Context, id uuid.UUID, e Experience, revision int64) (Experience, error) {
+	if revision < 1 {
+		return e, ErrInvalid
+	}
+	e, err := NormalizeExperience(e)
+	if err != nil {
+		return e, err
+	}
+	st, ok := s.store.(RevisionStore)
+	if !ok {
+		return e, ErrInvalid
+	}
+	return st.SaveExperienceRevision(ctx, id, e, revision)
 }
-func (s *Service) SaveEducationRevision(ctx context.Context,id uuid.UUID,e Education,revision int64)(Education,error){
- if revision<1{return e,ErrInvalid};e,err:=NormalizeEducation(e);if err!=nil{return e,err}
- st,ok:=s.store.(RevisionStore);if !ok{return e,ErrInvalid};return st.SaveEducationRevision(ctx,id,e,revision)
+func (s *Service) SaveEducationRevision(ctx context.Context, id uuid.UUID, e Education, revision int64) (Education, error) {
+	if revision < 1 {
+		return e, ErrInvalid
+	}
+	e, err := NormalizeEducation(e)
+	if err != nil {
+		return e, err
+	}
+	st, ok := s.store.(RevisionStore)
+	if !ok {
+		return e, ErrInvalid
+	}
+	return st.SaveEducationRevision(ctx, id, e, revision)
 }
-func (s *Service) DeleteExperienceRevision(ctx context.Context,id,item uuid.UUID,revision int64) error {if revision<1{return ErrInvalid};st,ok:=s.store.(RevisionStore);if !ok{return ErrInvalid};return st.DeleteExperienceRevision(ctx,id,item,revision)}
-func (s *Service) DeleteEducationRevision(ctx context.Context,id,item uuid.UUID,revision int64) error {if revision<1{return ErrInvalid};st,ok:=s.store.(RevisionStore);if !ok{return ErrInvalid};return st.DeleteEducationRevision(ctx,id,item,revision)}
+func (s *Service) DeleteExperienceRevision(ctx context.Context, id, item uuid.UUID, revision int64) error {
+	if revision < 1 {
+		return ErrInvalid
+	}
+	st, ok := s.store.(RevisionStore)
+	if !ok {
+		return ErrInvalid
+	}
+	return st.DeleteExperienceRevision(ctx, id, item, revision)
+}
+func (s *Service) DeleteEducationRevision(ctx context.Context, id, item uuid.UUID, revision int64) error {
+	if revision < 1 {
+		return ErrInvalid
+	}
+	st, ok := s.store.(RevisionStore)
+	if !ok {
+		return ErrInvalid
+	}
+	return st.DeleteEducationRevision(ctx, id, item, revision)
+}
+
 // ApplyProfilePatch runs against the locked current profile to avoid lost updates.
 func ApplyProfilePatch(p Profile, in ProfilePatch) (Profile, error) {
 	if in.DisplayName != nil {
