@@ -36,7 +36,7 @@ Milestone 5 has entered **design review only** on a branch from the merged `mast
 | D | React directory, filters, cards, pagination and owner discovery controls | #17 |
 | E | E2E/platform/accessibility/security review, documentation and approved PR preparation | #19; final acceptance #14–#18 |
 
-GitHub Actions CI was added through PR #12. The Issue #11 [remediation review](issue-11-remediation-review.md) records exact-SHA CI and later local evidence; it does not establish a production deployment. Required branch protection remains #10 follow-up. Browser CI and sqlc generation policy remain separate follow-up decisions. This M5 design phase authorizes no push, PR, merge, deployment, issue creation or issue closure.
+GitHub Actions CI was added through PR #12. The Issue #11 [remediation review](issue-11-remediation-review.md) records exact-SHA CI and later local evidence; it does not establish a production deployment. Required branch protection remains #10 follow-up. Browser CI and sqlc generation policy remain separate follow-up decisions. M5 design artifacts may be submitted as a draft PR for maintainer review; that review does not authorize implementation, merge, deployment, issue creation or issue closure.
 
 Before public launch, review the production storage and moderation conditions in [phase-c-profile-privacy.md](phase-c-profile-privacy.md). Alumni proof/retention and OIDC deployment topology remain open before their respective release work.
 
