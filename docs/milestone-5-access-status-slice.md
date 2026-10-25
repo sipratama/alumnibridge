@@ -1,6 +1,6 @@
 # Milestone 5 access status baseline and disposable identity rehearsal
 
-**Status:** Local implementation slice for review, based on `master` `dc9851f`; depends on [draft design PR #23](https://github.com/sipratama/alumnibridge/pull/23). No production issuer, hosting, retention, admin grant, account deletion or recovery decision is implied. This branch must be reviewed after the design policy is reconciled; do not merge it ahead of PR #23 without resolving documentation and issuer-binding conflicts.
+**Status:** Implementation slice in [draft PR #24](https://github.com/sipratama/alumnibridge/pull/24), originally based on `master` `dc9851f`, now reconciled with the bounded design approval merged through [PR #23](https://github.com/sipratama/alumnibridge/pull/23). No production issuer, hosting, retention, admin grant, account deletion or recovery decision is implied. Review the reconciled code and CI before merge.
 
 ## Protected route and provisioning inventory
 
@@ -38,7 +38,7 @@ Public `/health`, `/ready`, `/api/v1/skills`, `/api/v1/profiles/{slug}`, its pho
 
 ## Ordered PRs after design review
 
-1. **PR #23 design gate:** reconcile ADR 0004 and the maintainer decisions; keep it draft until accepted. This access slice is based on `master` to keep implementation review separate and must not be merged before the design dependency is resolved.
+1. **PR #23 design gate:** merged with bounded development approval in ADR 0004. Production policy decisions remain open; this does not authorize privileged or destructive operations.
 2. **Access baseline (this branch):** migration 000009, verified-token status check, guarded provisioning/onboarding, OpenAPI and focused signed-token/PostgreSQL tests. It can be tested without production hosting or a retention number because it creates no production deletion markers or status writer. Review the issuer compatibility and in-flight request limits explicitly.
 3. **Issuer-bound lifecycle writer:** only after issuer migration, account-deletion and marker-retention policies are approved, add trusted state transitions, publication withdrawal, marker insertion and full-transaction retry under the documented lock order. Keep admin grants and recovery out of this PR.
 4. **Operational topology:** choose a production operator, stable issuer/domain, TLS, backup custody and restore target; repeat the disposable drill in a production-like environment before any deployment. Admin bootstrap, deletion and recovery remain separate later PRs.
