@@ -20,7 +20,7 @@ func RegisterPublishingRoutes(r chi.Router, s *profiles.Service, p *profiles.Pub
 		r.Get("/profiles/{slug}/photo", h.publicPhoto)
 	})
 	r.Group(func(r chi.Router) {
-		r.Use(auth.Middleware(v))
+		r.Use(noStore, auth.Middleware(v))
 		r.Get("/users/me/profile/privacy", h.privacy)
 		r.Patch("/users/me/profile/privacy", h.updatePrivacy)
 		r.Get("/users/me/profile/photo", h.ownerPhoto)
@@ -64,6 +64,7 @@ func (h *Handler) privacy(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
+	w.Header().Set("ETag", resourceETag("privacy", p.Revision))
 	write(w, 200, p)
 }
 func (h *Handler) updatePrivacy(w http.ResponseWriter, r *http.Request) {
@@ -81,11 +82,17 @@ func (h *Handler) updatePrivacy(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	out, err := h.publication.UpdatePrivacy(r.Context(), u, p)
+	expected, conditionalErr := requireRevision(r, "privacy")
+	if conditionalErr != nil {
+		fail(w, conditionalErr)
+		return
+	}
+	out, err := h.publication.UpdatePrivacyConditional(r.Context(), u, p, expected)
 	if err != nil {
 		fail(w, err)
 		return
 	}
+	w.Header().Set("ETag", resourceETag("privacy", out.Revision))
 	write(w, 200, out)
 }
 func (h *Handler) uploadPhoto(w http.ResponseWriter, r *http.Request) {
@@ -103,10 +110,17 @@ func (h *Handler) uploadPhoto(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	if err = h.publication.UploadPhoto(r.Context(), u, r.Body, kind); err != nil {
+	expected, err := requireRevision(r, "profile")
+	if err != nil {
 		fail(w, err)
 		return
 	}
+	revision, err := h.publication.UploadPhotoConditional(r.Context(), u, r.Body, kind, expected)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	w.Header().Set("ETag", resourceETag("profile", revision))
 	write(w, 201, map[string]string{"photo_url": "/api/v1/users/me/profile/photo"})
 }
 func (h *Handler) removePhoto(w http.ResponseWriter, r *http.Request) {
@@ -115,10 +129,17 @@ func (h *Handler) removePhoto(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	if err = h.publication.RemovePhoto(r.Context(), u); err != nil {
+	expected, err := requireRevision(r, "profile")
+	if err != nil {
 		fail(w, err)
 		return
 	}
+	revision, err := h.publication.RemovePhotoConditional(r.Context(), u, expected)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	w.Header().Set("ETag", resourceETag("profile", revision))
 	w.WriteHeader(204)
 }
 func photoResponse(w http.ResponseWriter, p profiles.Photo, body io.ReadCloser) {

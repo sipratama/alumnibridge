@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
+ "fmt"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -73,6 +74,28 @@ func TestReviewAuthenticatedAPIAndConcurrency(t *testing.T) {
 		if tok != "" {
 			req.Header.Set("Authorization", "Bearer "+tok)
 		}
+        if method == "PATCH" && path == "/users/me/profile" {
+          actor := subjectA
+          if tok == tb { actor = subjectB }
+          var ownerID uuid.UUID
+          if err := db.QueryRow(ctx, `SELECT id FROM users WHERE oidc_subject=$1`, actor).Scan(&ownerID); err == nil {
+            var revision int64
+            if err := db.QueryRow(ctx, `SELECT content_revision FROM profiles WHERE user_id=$1`, ownerID).Scan(&revision); err == nil {
+              req.Header.Set("If-Match", fmt.Sprintf(`"ab-profile-v%d"`,revision))
+            }
+          }
+        }
+        if strings.HasPrefix(path,"/users/me/experiences/") || strings.HasPrefix(path,"/users/me/educations/") {
+          kind := "experience"
+          table := "profile_experiences"
+          if strings.Contains(path,"/educations/"){kind="education";table="profile_educations"}
+          item,err:=uuid.Parse(path[strings.LastIndex(path,"/")+1:]);if err==nil {
+            var rev int64
+            err=db.QueryRow(ctx,`SELECT revision FROM `+table+` WHERE id=$1`,item).Scan(&rev)
+            if err!=nil {rev=1}
+            req.Header.Set("If-Match",fmt.Sprintf(`"ab-%s-%s-v%d"`,kind,item.String(),rev))
+          }
+        }
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
 		if w.Code != want {
@@ -83,13 +106,24 @@ func TestReviewAuthenticatedAPIAndConcurrency(t *testing.T) {
 	request("GET", "/users/me/profile", "", "", 401)
 	request("GET", "/users/me/profile", "", "invalid", 401)
 	request("GET", "/users/me/profile", "", token(subjectA, time.Now().Add(-time.Hour)), 401)
-	request("GET", "/users/me/profile", "", ta, 200)
+	firstOwnerRead := request("GET", "/users/me/profile", "", ta, 200)
 	request("GET", "/users/me/profile", "", tb, 200)
+    firstOwnerETag := firstOwnerRead.Header().Get("ETag")
+    if firstOwnerETag == "" {t.Fatal("missing original owner ETag")}
 	ua, _ := ids.Me(ctx, identity.Principal{Subject: subjectA})
 	ub, _ := ids.Me(ctx, identity.Principal{Subject: subjectB})
 	defer db.Exec(ctx, `DELETE FROM users WHERE id IN ($1,$2)`, ua.ID, ub.ID)
 	request("PATCH", "/users/me/profile", `{"display_name":"Alice","headline":"Engineer"}`, ta, 200)
 	request("PATCH", "/users/me/profile", `{"display_name":"Bob"}`, tb, 200)
+    staleProfile := httptest.NewRequest("PATCH", "/api/v1/users/me/profile", strings.NewReader(`{"headline":"stale override"}`))
+    staleProfile.Header.Set("Content-Type","application/json")
+    staleProfile.Header.Set("Authorization","Bearer "+ta)
+    staleProfile.Header.Set("If-Match",firstOwnerETag)
+    staleResponse := httptest.NewRecorder()
+    r.ServeHTTP(staleResponse,staleProfile)
+    if staleResponse.Code!=412 || !strings.Contains(staleResponse.Body.String(),"stale_revision") {
+       t.Fatalf("stale signed-JWT owner PATCH must return 412, got %d %s",staleResponse.Code,staleResponse.Body.String())
+    }
 	request("PATCH", "/users/me/profile", `{"user_id":"`+ub.ID.String()+`","headline":"attack"}`, ta, 400)
 	request("PATCH", "/users/me/profile", `{"headline":null}`, ta, 400)
 	request("PATCH", "/users/me/profile", `null`, ta, 400)

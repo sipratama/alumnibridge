@@ -96,13 +96,29 @@ func TestDirectoryConsentPrivacyAndSignedJWT(t *testing.T) {
 		profileshttp.RegisterDiscoveryRoutes(r, profile, discovery, ids, verifier)
 		profileshttp.RegisterPublishingRoutes(r, profile, profiles.NewPublishing(ps, nil), ids, verifier)
 	})
-	call := func(method, path, body, token string, want int) *httptest.ResponseRecorder {
+	call := func(method, path, body, token string, want int, ifMatch ...string) *httptest.ResponseRecorder {
 		t.Helper()
 		req := httptest.NewRequest(method, "/api/v1"+path, strings.NewReader(body))
 		req = req.WithContext(ctx)
 		req.Header.Set("Content-Type", "application/json")
 		if token != "" {
 			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		if method == "PATCH" && want != 401 && (path == "/users/me/profile/privacy" || path == "/users/me/profile/discovery") {
+			if len(ifMatch) != 0 {
+				if ifMatch[0] != "" {
+					req.Header.Set("If-Match", ifMatch[0])
+				}
+			} else {
+				ownerGet := httptest.NewRequest("GET", "/api/v1"+path, nil).WithContext(ctx)
+				ownerGet.Header.Set("Authorization", "Bearer "+token)
+				ownerResponse := httptest.NewRecorder()
+				router.ServeHTTP(ownerResponse, ownerGet)
+				if ownerResponse.Code != 200 || ownerResponse.Header().Get("ETag") == "" {
+					t.Fatalf("owner GET %s did not supply an ETag: %d %s", path, ownerResponse.Code, ownerResponse.Body.String())
+				}
+				req.Header.Set("If-Match", ownerResponse.Header().Get("ETag"))
+			}
 		}
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
@@ -186,6 +202,13 @@ func TestDirectoryConsentPrivacyAndSignedJWT(t *testing.T) {
 	if defaults.DirectoryDiscoverable || defaults.EffectiveDiscoverable || defaults.DirectoryConsentedAt != nil || !defaults.Eligible || len(defaults.Memberships) != 1 || defaults.Memberships[0].ShowInstitution {
 		t.Fatalf("defaults: %+v", defaults)
 	}
+	originalETag := call("GET", ownerPath, "", a.token, 200).Header().Get("ETag")
+	if originalETag == "" {
+		t.Fatal("missing original discovery ETag")
+	}
+	call("PATCH", ownerPath, `{"directory_discoverable":false}`, a.token, 428, "")
+	call("PATCH", ownerPath, `{"directory_discoverable":false}`, a.token, 200, originalETag)
+	call("PATCH", ownerPath, `{"directory_discoverable":false}`, a.token, 412, originalETag)
 	searchPage := func(extra, token string) directory.Page {
 		t.Helper()
 		w := call("GET", "/directory?query="+url.QueryEscape(namePrefix)+extra, "", token, 200)

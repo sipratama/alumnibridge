@@ -1,0 +1,62 @@
+name: Issue 11 PostgreSQL Concurrency
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - 'apps/api/**'
+      - 'infrastructure/migrations/**'
+      - '.github/workflows/issue11-postgres.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  postgres:
+    name: PostgreSQL 17 / all migrations / concurrency
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: alumnibridge
+          POSTGRES_PASSWORD: issue11_ci_only
+          POSTGRES_DB: issue11_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U alumnibridge -d issue11_ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: alumnibridge
+      PGPASSWORD: issue11_ci_only
+      PGDATABASE: issue11_ci
+      TEST_DATABASE_URL: postgres://alumnibridge:issue11_ci_only@127.0.0.1:5432/issue11_ci?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/api/go.mod
+          cache-dependency-path: apps/api/go.sum
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+      - name: Apply all current migrations
+        run: |
+          set -euo pipefail
+          for file in infrastructure/migrations/*.up.sql; do psql -v ON_ERROR_STOP=1 -f "$file"; done
+      - name: Rollback all migrations and reapply in isolation
+        run: |
+          set -euo pipefail
+          mapfile -t down < <(find infrastructure/migrations -maxdepth 1 -name '*.down.sql' | sort -r)
+          for file in "${down[@]}"; do psql -v ON_ERROR_STOP=1 -f "$file"; done
+          for file in infrastructure/migrations/*.up.sql; do psql -v ON_ERROR_STOP=1 -f "$file"; done
+      - name: Run PostgreSQL revision and signed JWT owner regression tests
+        working-directory: apps/api
+        run: go test -count=1 -v ./internal/profiles/postgres ./internal/profiles/http

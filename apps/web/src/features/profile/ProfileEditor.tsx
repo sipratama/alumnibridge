@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Button } from '@/components/ui/button'
-import { ApiError, request } from '@/shared/api/client'
+import { useAuth } from '@/app/authContext'
+import { ApiError, versionedRequest } from '@/shared/api/client'
 import { Dialog, Feedback, Field } from './components'
+import { ConflictReview, type ConflictField } from './ConflictReview'
 import {
   json,
   ownerPath,
@@ -12,6 +14,13 @@ import {
   type ProfileInput,
 } from './api'
 import { profileSchema } from './validation'
+
+const profileFields: Array<[keyof ProfileInput, string]> = [
+  ['display_name', 'Display name'], ['headline', 'Professional headline'],
+  ['location', 'General location'], ['current_job_title', 'Current job title'],
+  ['current_company', 'Current company'], ['slug', 'Public profile slug'],
+  ['bio', 'About'],
+]
 
 export function ProfileEditor({
   profile,
@@ -22,36 +31,47 @@ export function ProfileEditor({
   onClose: () => void
   onSaved: () => void
 }) {
+  const { getToken, refreshUser } = useAuth()
+  const [origin] = useState(profile)
+  const [base, setBase] = useState(origin)
+  const [latest, setLatest] = useState<Profile>()
+  const [reloadError, setReloadError] = useState(false)
+  const [reloading, setReloading] = useState(false)
   const [baseline] = useState<ProfileInput>(() => {
-    const { completeness: _, ...values } = profile
+    const { completeness: _, __etag: _etag, ...values } = origin
     return values
   })
   const form = useForm<ProfileInput>({
     resolver: zodResolver(profileSchema),
     defaultValues: baseline,
   })
-  const dirtyFields = form.formState.dirtyFields
+  const draft = useWatch({ control: form.control })
   const mutation = useOwnerMutation(
     async (values: Partial<ProfileInput>, token) => {
-      const latest = await request<Profile>(`${ownerPath}/profile`, token)
-      if (
-        (Object.keys(values) as (keyof ProfileInput)[]).some(
-          (key) => latest[key] !== baseline[key],
-        )
-      )
-        throw new ApiError(409, 'profile_changed')
-      return request<Profile>(
-        `${ownerPath}/profile`,
-        token,
-        json('PATCH', values),
+      if (!base.__etag) throw new ApiError(428, 'revision_missing')
+      return versionedRequest<Profile>(
+        `${ownerPath}/profile`, token,
+        { ...json('PATCH', values), headers: { 'If-Match': base.__etag } },
       )
     },
   )
+  async function reloadLatest() {
+    setReloading(true)
+    try {
+      const current = await versionedRequest<Profile>(`${ownerPath}/profile`, getToken)
+      if (!current.__etag) throw new ApiError(428, 'revision_missing')
+      setLatest(current)
+      setReloadError(false)
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) void refreshUser()
+      setReloadError(true)
+    } finally {
+      setReloading(false)
+    }
+  }
   async function submit(values: ProfileInput) {
     const patch = Object.fromEntries(
-      Object.entries(values).filter(
-        ([key]) => dirtyFields[key as keyof ProfileInput],
-      ),
+      profileFields.filter(([key]) => values[key] !== base[key]).map(([key]) => [key, values[key]]),
     )
     if (!Object.keys(patch).length) {
       onClose()
@@ -61,6 +81,7 @@ export function ProfileEditor({
       await mutation.mutateAsync(patch)
       onSaved()
     } catch (error) {
+      if (error instanceof ApiError && error.status === 412) void reloadLatest()
       if (
         error instanceof ApiError &&
         error.status === 409 &&
@@ -73,6 +94,18 @@ export function ProfileEditor({
           { shouldFocus: true },
         )
     }
+  }
+  const conflicts: ConflictField[] = latest ? profileFields
+    .filter(([key]) => draft[key] !== base[key])
+    .map(([key, label]) => ({ key, label, original: base[key], current: latest[key], draft: draft[key] })) : []
+  function applySelected(selected: Set<string>) {
+    if (!latest) return
+    const values = form.getValues()
+    const merged = Object.fromEntries(profileFields.map(([key]) => [key, selected.has(key) ? values[key] : latest[key]])) as ProfileInput
+    setBase(latest)
+    form.reset(merged)
+    setLatest(undefined)
+    mutation.reset()
   }
   return (
     <Dialog
@@ -137,15 +170,20 @@ export function ProfileEditor({
           </div>
         </fieldset>
         {mutation.error instanceof ApiError &&
-        mutation.error.code === 'profile_changed' ? (
+        (mutation.error.status === 412 || mutation.error.code === 'profile_changed') ? (
           <p role="alert" className="profile-error">
             Your profile changed in another session. Your entries are preserved
-            here. Close and reload the profile before trying again.
+            here. Review the current values before saving again.
           </p>
         ) : (
           <Feedback error={mutation.error} />
         )}
+        {latest && <ConflictReview key={latest.__etag} fields={conflicts} onApply={applySelected} />}
+        {reloadError && <p role="alert" className="profile-error">Current profile could not be loaded. Your draft is preserved.</p>}
         <div className="form-actions">
+          <Button type="button" variant="outline" disabled={reloading || mutation.isPending} onClick={() => void reloadLatest()}>
+            {reloading ? 'Loading current profile…' : 'Reload current profile'}
+          </Button>
           <Button
             type="button"
             variant="outline"
@@ -154,7 +192,7 @@ export function ProfileEditor({
           >
             Cancel
           </Button>
-          <Button disabled={mutation.isPending}>
+          <Button disabled={mutation.isPending || !!latest}>
             {mutation.isPending ? 'Saving…' : 'Save profile'}
           </Button>
         </div>

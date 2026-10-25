@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Camera, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { apiRequest } from '@/shared/api/client'
-import { ownerPath, useOwnerMutation } from './api'
+import { ApiError, apiRequest } from '@/shared/api/client'
+import { ownerPath, useOwnerMutation, type Profile } from './api'
 import { Avatar, ConfirmDelete, Feedback } from './components'
 import { validatePhoto } from './validation'
 
@@ -10,40 +10,57 @@ export function PhotoEditor({
   name,
   src,
   error,
+  etag,
+  reloadProfile,
 }: {
   name: string
   src?: string
   error?: unknown
+  etag?: string
+  reloadProfile?: () => Promise<Profile | undefined>
 }) {
-  const [selection, setSelection] = useState<{ file: File; url: string }>()
+  const [selection, setSelection] = useState<{ file: File; url: string; etag?: string }>()
   const file = selection?.file
   const preview = selection?.url
   const [validation, setValidation] = useState('')
   const [message, setMessage] = useState('')
   const [confirm, setConfirm] = useState(false)
+  const [deleteETag, setDeleteETag] = useState<string>()
+  const [latest, setLatest] = useState<Profile>()
+  const [reloadError, setReloadError] = useState(false)
   const input = useRef<HTMLInputElement>(null)
   useEffect(() => {
     return () => {
       if (preview) URL.revokeObjectURL(preview)
     }
   }, [preview])
-  const upload = useOwnerMutation(async (image: File, token) =>
+  const upload = useOwnerMutation(async (image: { file: File; etag?: string }, token) =>
     apiRequest(`${ownerPath}/profile/photo`, {
       method: 'POST',
-      body: image,
+      body: image.file,
       headers: {
         Authorization: `Bearer ${await token()}`,
-        'Content-Type': image.type,
+        'Content-Type': image.file.type,
+        ...(image.etag ? { 'If-Match': image.etag } : {}),
       },
     }),
   )
-  const remove = useOwnerMutation(async (_: void, token) =>
+  const remove = useOwnerMutation(async (expected: string | undefined, token) =>
     apiRequest<void>(`${ownerPath}/profile/photo`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${await token()}` },
+      headers: { Authorization: `Bearer ${await token()}`, ...(expected ? { 'If-Match': expected } : {}) },
     }),
   )
   const busy = upload.isPending || remove.isPending
+  async function loadLatest() {
+    if (!reloadProfile) return
+    try {
+      setLatest(await reloadProfile())
+      setReloadError(false)
+    } catch {
+      setReloadError(true)
+    }
+  }
   return (
     <div className="photo-editor">
       <div className="photo-row">
@@ -67,6 +84,8 @@ export function PhotoEditor({
                 aria-label="Delete profile photo"
                 onClick={() => {
                   remove.reset()
+                  setDeleteETag(etag)
+                  setLatest(undefined)
                   setConfirm(true)
                 }}
               >
@@ -91,10 +110,11 @@ export function PhotoEditor({
           setValidation(issue || '')
           setMessage('')
           upload.reset()
+          setLatest(undefined)
           setSelection(
             issue
               ? undefined
-              : { file: selected, url: URL.createObjectURL(selected) },
+              : { file: selected, url: URL.createObjectURL(selected), etag },
           )
         }}
       />
@@ -102,15 +122,15 @@ export function PhotoEditor({
         <div className="photo-preview-actions">
           <p>Preview only. Save to upload this photo.</p>
           <Button
-            disabled={busy}
+            disabled={busy || !!latest}
             onClick={() => {
               void upload
-                .mutateAsync(file)
+                .mutateAsync({ file, etag: selection?.etag })
                 .then(() => {
                   setSelection(undefined)
                   setMessage('Photo saved.')
                 })
-                .catch(() => {})
+                .catch((caught) => { if (caught instanceof ApiError && caught.status === 412) void loadLatest() })
             }}
           >
             {upload.isPending ? 'Uploading…' : 'Save photo'}
@@ -133,6 +153,13 @@ export function PhotoEditor({
         </p>
       )}
       <Feedback error={upload.error || error} message={message} />
+      {latest && file && <div className="conflict-review" role="alert">
+        <p>The profile changed while you prepared this photo. Review the current profile before retrying. Your selected photo remains in preview.</p>
+        <p>Currently saved profile: {latest.display_name} · {latest.headline || '(no headline)'}</p>
+        <Button type="button" variant="outline" onClick={() => { setSelection({ ...selection!, etag: latest.__etag }); setLatest(undefined); upload.reset() }}>Use current profile revision for this photo</Button>
+      </div>}
+      {reloadError && <p role="alert">Current profile could not be loaded. Your photo selection is preserved.</p>}
+      {file && upload.error instanceof ApiError && upload.error.status === 412 && <Button type="button" variant="outline" onClick={() => void loadLatest()}>Reload current profile</Button>}
       {confirm && (
         <ConfirmDelete
           title="Remove profile photo?"
@@ -141,15 +168,23 @@ export function PhotoEditor({
           onClose={() => setConfirm(false)}
           onConfirm={() => {
             void remove
-              .mutateAsync()
+              .mutateAsync(deleteETag)
               .then(() => {
                 setConfirm(false)
                 setSelection(undefined)
                 setMessage('Photo removed.')
               })
-              .catch(() => {})
+              .catch((caught) => { if (caught instanceof ApiError && caught.status === 412) void loadLatest() })
           }}
-        />
+          confirmDisabled={!!latest}
+        >
+          {latest && <div className="conflict-review" role="alert">
+            <p>The profile changed. Current profile: {latest.display_name} · {latest.headline || '(no headline)'}. Review before deleting the current photo.</p>
+            <Button type="button" variant="outline" onClick={() => { setDeleteETag(latest.__etag); setLatest(undefined); remove.reset() }}>Use current profile revision for deletion</Button>
+          </div>}
+          {reloadError && <p role="alert">Current profile could not be loaded. Deletion remains paused.</p>}
+          {remove.error instanceof ApiError && remove.error.status === 412 && <Button type="button" variant="outline" onClick={() => void loadLatest()}>Reload current profile</Button>}
+        </ConfirmDelete>
       )}
     </div>
   )

@@ -51,19 +51,23 @@ paths:
       summary: Get or initialize the authenticated member's private profile
       security: [{bearerAuth: []}]
       responses:
-        '200': {description: Private profile, content: {application/json: {schema: {$ref: '#/components/schemas/Profile'}}}}
+        '200': {description: Private profile, headers: {ETag: {$ref: '#/components/headers/OwnerETag'}}, content: {application/json: {schema: {$ref: '#/components/schemas/Profile'}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
     patch:
       summary: Update private profile fields and slug
       security: [{bearerAuth: []}]
+      parameters: [{name: If-Match, in: header, required: true, schema: {type: string}, description: 'Strong owner profile ETag; missing 428, stale 412'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ProfilePatch'}}}}
       responses:
-        '200': {description: Updated profile, content: {application/json: {schema: {$ref: '#/components/schemas/Profile'}}}}
+        '200': {description: Updated profile, headers: {ETag: {$ref: '#/components/headers/OwnerETag'}}, content: {application/json: {schema: {$ref: '#/components/schemas/Profile'}}}}
         '400': {description: Invalid input; null is rejected for non-nullable fields}
+        '412': {description: Stale revision; safe error code stale_revision}
+        '428': {description: If-Match precondition is required}
         '413': {description: JSON body exceeds 64 KiB}
         '415': {description: Content-Type must be application/json}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '409': {description: Slug already reserved}
+        '404': {description: Owner profile absent}
   /api/v1/users/me/experiences:
     get:
       summary: List the owner's experiences, newest first, at most 100
@@ -86,6 +90,7 @@ paths:
     parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
     patch:
       summary: Replace the owner's experience fields
+      parameters: [{name: If-Match, in: header, required: true, schema: {type: string}, description: 'Strong owner item ETag; missing 428, stale 412'}]
       description: All required experience fields must be supplied.
       security: [{bearerAuth: []}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ExperienceInput'}}}}
@@ -95,13 +100,18 @@ paths:
         '413': {description: JSON body exceeds 64 KiB}
         '415': {description: Content-Type must be application/json}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '412': {description: Stale revision}
+        '428': {description: If-Match required}
         '404': {description: Experience absent or not owned}
     delete:
       summary: Delete the owner's experience
+      parameters: [{name: If-Match, in: header, required: true, schema: {type: string}, description: 'Strong owner item ETag; missing 428, stale 412'}]
       security: [{bearerAuth: []}]
       responses:
         '204': {description: Deleted}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '412': {description: Stale revision}
+        '428': {description: If-Match required}
         '404': {description: Experience absent or not owned}
   /api/v1/users/me/educations:
     get:
@@ -125,6 +135,7 @@ paths:
     parameters: [{name: id, in: path, required: true, schema: {type: string, format: uuid}}]
     patch:
       summary: Replace the owner's education fields
+      parameters: [{name: If-Match, in: header, required: true, schema: {type: string}, description: 'Strong owner item ETag; missing 428, stale 412'}]
       description: Institution is required; omitted optional fields are cleared.
       security: [{bearerAuth: []}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EducationInput'}}}}
@@ -134,13 +145,18 @@ paths:
         '413': {description: JSON body exceeds 64 KiB}
         '415': {description: Content-Type must be application/json}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '412': {description: Stale revision}
+        '428': {description: If-Match required}
         '404': {description: Education entry absent or not owned}
     delete:
       summary: Delete the owner's education entry
+      parameters: [{name: If-Match, in: header, required: true, schema: {type: string}, description: 'Strong owner item ETag; missing 428, stale 412'}]
       security: [{bearerAuth: []}]
       responses:
         '204': {description: Deleted}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '412': {description: Stale revision}
+        '428': {description: If-Match required}
         '404': {description: Education entry absent or not owned}
   /api/v1/skills:
     get:
@@ -190,19 +206,23 @@ paths:
       summary: Read the owner's privacy settings, initializing a private profile if absent
       security: [{bearerAuth: []}]
       responses:
-        '200': {description: Owner privacy settings, content: {application/json: {schema: {$ref: '#/components/schemas/Privacy'}}}}
+        '200': {description: Owner privacy settings, headers: {ETag: {$ref: '#/components/headers/OwnerETag'}}, content: {application/json: {schema: {$ref: '#/components/schemas/Privacy'}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
     patch:
       summary: Explicitly select public or private and optionally update field publication choices
-      description: Visibility is mandatory. Omitted flags retain their values. Null, verification and moderation fields are rejected. Publishing shares display name and headline; optional groups remain hidden unless enabled.
+      description: Visibility is mandatory. Omitted flags retain their values. Null, verification and moderation fields are rejected. Publishing shares display name and headline; optional groups remain hidden unless enabled. A strong If-Match from owner privacy or discovery GET is required; both share the same privacy revision. Missing validator is rejected with HTTP 428. Malformed header returns 400, stale revision returns 412.
       security: [{bearerAuth: []}]
+      parameters:
+        - {name: If-Match, in: header, required: true, description: 'Strong privacy resource ETag from the original owner draft', schema: {type: string}}
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Privacy'}}}}
       responses:
-        '200': {description: Updated privacy settings, content: {application/json: {schema: {$ref: '#/components/schemas/Privacy'}}}}
+        '200': {description: Updated privacy settings, headers: {ETag: {$ref: '#/components/headers/OwnerETag'}}, content: {application/json: {schema: {$ref: '#/components/schemas/Privacy'}}}}
         '400': {description: Invalid input}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '413': {description: JSON body exceeds 64 KiB}
         '415': {description: Content-Type must be application/json}
+        '412': {description: Stale shared privacy revision}
+        '428': {description: If-Match required}
   /api/v1/users/me/profile/photo:
     get:
       summary: Read the authenticated owner's photo, including when the profile is private or hidden
@@ -214,8 +234,9 @@ paths:
         '503': {description: Photo storage unavailable}
     post:
       summary: Upload or replace the owner's photo using raw image bytes
-      description: At most four uploads buffer/process bodies concurrently per API process; streamed bodies are limited without relying on Content-Length. Maximum 5 MiB input and normalized output; dimensions at most 4096 per side and 8 million pixels. JPEG is re-encoded, PNG and WebP become PNG; metadata is discarded. Filenames and object keys are never accepted. Replaced and abandoned objects are collected by a durable retry worker.
+      description: Requires the strong ETag from GET /users/me/profile in If-Match. The profile-content revision is compared atomically when the photo pointer changes; stale staged objects are queued for durable cleanup. At most four uploads buffer/process bodies concurrently per API process; streamed bodies are limited without relying on Content-Length. Maximum 5 MiB input and normalized output; dimensions at most 4096 per side and 8 million pixels. JPEG is re-encoded, PNG and WebP become PNG; metadata is discarded. Filenames and object keys are never accepted. Replaced and abandoned objects are collected by a durable retry worker.
       security: [{bearerAuth: []}]
+      parameters: [{name: If-Match, in: header, required: true, schema: {type: string}, description: 'Strong owner profile ETag from the original photo action'}]
       requestBody:
         required: true
         content:
@@ -223,19 +244,26 @@ paths:
           image/png: {schema: {type: string, format: binary}}
           image/webp: {schema: {type: string, format: binary}}
       responses:
-        '201': {description: Photo stored, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {photo_url: {type: string, const: /api/v1/users/me/profile/photo}}, required: [photo_url]}}}}
+        '201': {description: Photo stored; ETag contains the new profile-content validator, headers: {ETag: {schema: {type: string}}}, content: {application/json: {schema: {type: object, additionalProperties: false, properties: {photo_url: {type: string, const: /api/v1/users/me/profile/photo}}, required: [photo_url]}}}}
         '400': {description: 'Malformed image, MIME/content mismatch, or invalid dimensions'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {description: Owner profile absent}
+        '412': {description: Stale profile-content revision; staged object queued for cleanup}
+        '428': {description: If-Match required}
         '413': {description: Image exceeds 5 MiB}
         '415': {description: Unsupported image media type}
         '503': {description: Photo storage unavailable}
     delete:
       summary: Remove owner photo metadata immediately and queue object deletion
+      description: Requires the strong ETag from GET /users/me/profile in If-Match. Deletion compares the profile-content revision atomically before changing the pointer.
       security: [{bearerAuth: []}]
+      parameters: [{name: If-Match, in: header, required: true, schema: {type: string}, description: 'Strong owner profile ETag from the original photo action'}]
       responses:
-        '204': {description: Photo absent; deletion retries durably if storage is unavailable}
+        '204': {description: Photo absent; ETag contains the current profile-content validator; object deletion retries durably if storage is unavailable, headers: {ETag: {schema: {type: string}}}}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {description: Profile absent}
+        '412': {description: Stale profile-content revision}
+        '428': {description: If-Match required}
   /api/v1/profiles/{slug}/photo:
     parameters: [{name: slug, in: path, required: true, schema: {type: string, minLength: 3, maxLength: 64}}]
     get:
@@ -311,7 +339,9 @@ paths:
         Opt-in requires current PUBLIC/VISIBLE/verified eligibility, never changes visibility, moderation or verification.
         Existing privacy PATCH to PRIVATE clears directory/timestamp/academic consent in the same database statement transaction.
         Revoked/deleted memberships lose academic consent; last verified-membership loss clears discovery consent; reverification does not restore it.
-        Writes are atomic and owner-scoped but retain the documented development-only last-writer-wins limitation (#11), not optimistic concurrency.
+        A required strong If-Match uses the same privacy ETag as the owner privacy endpoint. Missing precondition returns 428; stale revision returns 412. Full Issue 11 release gate remains open for all mutation routes.
+      parameters:
+        - {name: If-Match, in: header, required: true, description: 'Shared privacy/discovery strong ETag from original owner draft', schema: {type: string}}
       requestBody:
         required: true
         content: {application/json: {schema: {$ref: '#/components/schemas/DiscoveryPatch'}}}
@@ -321,11 +351,16 @@ paths:
         '401': {$ref: '#/components/responses/DiscoveryUnauthorized'}
         '404': {$ref: '#/components/responses/DiscoveryNotFound'}
         '409': {$ref: '#/components/responses/DiscoveryConflict'}
+        '412': {description: Stale revision; safe error code stale_revision}
+        '428': {description: If-Match precondition is required}
         '413': {$ref: '#/components/responses/DiscoveryTooLarge'}
         '415': {$ref: '#/components/responses/DiscoveryMedia'}
         '500': {$ref: '#/components/responses/DirectoryInternal'}
 components:
   headers:
+    OwnerETag:
+      description: Strong validator for the owner resource returned by this response
+      schema: {type: string}
     NoStore:
       schema: {type: string, const: no-store}
     NoSniff:
@@ -439,6 +474,7 @@ components:
     DiscoverySettings:
       description: Private owner settings; eligible is independent of opt-in and effective_discoverable includes it
       headers:
+        ETag: {$ref: '#/components/headers/OwnerETag'}
         Cache-Control: {$ref: '#/components/headers/NoStore'}
         X-Content-Type-Options: {$ref: '#/components/headers/NoSniff'}
       content: {application/json: {schema: {$ref: '#/components/schemas/Discovery'}}}

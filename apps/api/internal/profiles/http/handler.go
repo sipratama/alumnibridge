@@ -119,6 +119,12 @@ func fail(w http.ResponseWriter, err error) {
 		status, code = 400, "invalid_input"
 	case errors.Is(err, profiles.ErrNotFound):
 		status, code = 404, "not_found"
+	case errors.Is(err, errMissingPrecondition):
+        status, code = http.StatusPreconditionRequired, "precondition_required"
+    case errors.Is(err, errInvalidPrecondition):
+        status, code = http.StatusBadRequest, "invalid_if_match"
+    case errors.Is(err, profiles.ErrStale):
+        status, code = http.StatusPreconditionFailed, "stale_revision"
 	case errors.Is(err, profiles.ErrConflict):
 		status, code = 409, "conflict"
 	}
@@ -142,7 +148,8 @@ func (h *Handler) profile(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	write(w, 200, p)
+	w.Header().Set("ETag",resourceETag("profile",p.Revision))
+ write(w, 200, p)
 }
 func (h *Handler) updateProfile(w http.ResponseWriter, r *http.Request) {
 	var in profiles.ProfilePatch
@@ -155,12 +162,14 @@ func (h *Handler) updateProfile(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	p, err := h.service.UpdateProfile(r.Context(), u, in)
+	expected, preErr:=requireRevision(r,"profile");if preErr!=nil{fail(w,preErr);return}
+ p, err := h.service.UpdateProfileRevision(r.Context(), u, in,expected)
 	if err != nil {
 		fail(w, err)
 		return
 	}
-	write(w, 200, p)
+	w.Header().Set("ETag",resourceETag("profile",p.Revision))
+ write(w, 200, p)
 }
 func (h *Handler) experiences(w http.ResponseWriter, r *http.Request) {
 	u, err := owner(h, r)
@@ -200,7 +209,7 @@ func (h *Handler) saveExperience(w http.ResponseWriter, r *http.Request, update 
 		fail(w, err)
 		return
 	}
-	e, err = h.service.SaveExperience(r.Context(), u, e, update)
+	if update {expected,pe:=requireRevision(r,"experience-"+e.ID.String());if pe!=nil{fail(w,pe);return};e,err=h.service.SaveExperienceRevision(r.Context(),u,e,expected)} else {e,err=h.service.SaveExperience(r.Context(),u,e,false)}
 	if err != nil {
 		fail(w, err)
 		return
@@ -222,7 +231,8 @@ func (h *Handler) deleteExperience(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	if err = h.service.DeleteExperience(r.Context(), u, item); err != nil {
+	expected,pe:=requireRevision(r,"experience-"+item.String());if pe!=nil{fail(w,pe);return}
+ if err = h.service.DeleteExperienceRevision(r.Context(), u, item,expected); err != nil {
 		fail(w, err)
 		return
 	}
@@ -264,7 +274,7 @@ func (h *Handler) saveEducation(w http.ResponseWriter, r *http.Request, update b
 		fail(w, err)
 		return
 	}
-	e, err = h.service.SaveEducation(r.Context(), u, e, update)
+	if update {expected,pe:=requireRevision(r,"education-"+e.ID.String());if pe!=nil{fail(w,pe);return};e,err=h.service.SaveEducationRevision(r.Context(),u,e,expected)} else {e,err=h.service.SaveEducation(r.Context(),u,e,false)}
 	if err != nil {
 		fail(w, err)
 		return
@@ -286,7 +296,8 @@ func (h *Handler) deleteEducation(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	if err = h.service.DeleteEducation(r.Context(), u, item); err != nil {
+	expected,pe:=requireRevision(r,"education-"+item.String());if pe!=nil{fail(w,pe);return}
+ if err = h.service.DeleteEducationRevision(r.Context(), u, item,expected); err != nil {
 		fail(w, err)
 		return
 	}

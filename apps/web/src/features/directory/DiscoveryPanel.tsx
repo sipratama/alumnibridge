@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button'
 import { ApiError } from '@/shared/api/client'
 import { useOwnerQuery } from '@/features/profile/api'
 import { LoadError, Loading } from '@/features/profile/components'
+import { ConflictReview, type ConflictField } from '@/features/profile/ConflictReview'
 import {
-  getDiscovery, updateDiscovery,
+  updateDiscovery,
   type AcademicConsent, type DiscoveryPatch, type DiscoverySettings,
 } from './api'
 
@@ -18,25 +19,74 @@ export function DiscoveryPanel({ visibility }: { visibility: 'public' | 'private
   const query = useOwnerQuery<DiscoverySettings>('profile/discovery')
   if (query.isPending) return <Loading label="Loading directory discovery settings…" />
   if (query.error && (!query.data || (query.error instanceof ApiError && query.error.status === 401))) return <LoadError error={query.error} retry={() => void query.refetch()} />
-  return <>{query.error && <p className="profile-error" role="alert">Settings could not be refreshed. Your choices are preserved; retry before saving.</p>}<DiscoveryForm initial={query.data} visibility={visibility} onReload={() => void query.refetch()} /></>
+  return <>{query.error && <p className="profile-error" role="alert">Settings could not be refreshed. Your choices are preserved; retry before saving.</p>}<DiscoveryForm initial={query.data} visibility={visibility} onReload={async () => {
+    const result = await query.refetch()
+    if (result.error || !result.data) throw result.error || new Error('Discovery settings unavailable')
+    return result.data
+  }} /></>
 }
 
-function DiscoveryForm({ initial, visibility, onReload }: { initial: DiscoverySettings; visibility: 'public' | 'private'; onReload: () => void }) {
+function DiscoveryForm({ initial, visibility, onReload }: { initial: DiscoverySettings; visibility: 'public' | 'private'; onReload: () => Promise<DiscoverySettings> }) {
   const { getToken, user } = useAuth()
   const client = useQueryClient()
   const [draft, setDraft] = useState({ origin: initial, enabled: initial.directory_discoverable, affiliations: choices(initial) })
-  const active = draft.origin === initial ? draft : { origin: initial, enabled: initial.directory_discoverable, affiliations: choices(initial) }
-  const { enabled, affiliations } = active
-  const saved = initial
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>(null)
   const [message, setMessage] = useState('')
-  const canOptIn = initial.eligible && visibility === 'public'
+  const [latest, setLatest] = useState<DiscoverySettings>()
+  const [reloadError, setReloadError] = useState(false)
+  // Only an untouched form can follow a fresh eligibility snapshot. Once an
+  // owner edits a choice, its original validator stays with that draft.
+  const pristine = draft.enabled === draft.origin.directory_discoverable && JSON.stringify(draft.affiliations) === JSON.stringify(choices(draft.origin))
+  const active = pristine && !busy && !latest && initial.__etag !== draft.origin.__etag
+    ? { origin: initial, enabled: initial.directory_discoverable, affiliations: choices(initial) }
+    : draft
+  const { enabled, affiliations } = active
+  const saved = active.origin
+  const canOptIn = saved.eligible && visibility === 'public'
   function setFlag(id: string, flag: keyof Omit<AcademicConsent, 'membership_id'>, checked: boolean) {
     setDraft({ ...active, affiliations: affiliations.map((item) => item.membership_id === id ? {
       ...item, [flag]: checked,
       ...(flag === 'show_institution' && !checked ? { show_study_program: false, show_graduation_year: false } : {}),
     } : item) })
+  }
+  async function reloadLatest() {
+    try {
+      const current = await onReload()
+      if (!current.__etag) throw new ApiError(428, 'revision_missing')
+      setLatest(current)
+      setReloadError(false)
+    } catch { setReloadError(true) }
+  }
+  const conflicts: ConflictField[] = []
+  if (latest) {
+    if (enabled !== saved.directory_discoverable) conflicts.push({ key: 'enabled', label: 'Directory listing', original: saved.directory_discoverable, current: latest.directory_discoverable, draft: enabled })
+    for (const original of saved.memberships) {
+      const edited = affiliations.find((item) => item.membership_id === original.membership_id)
+      const current = latest.memberships.find((item) => item.membership_id === original.membership_id)
+      for (const flag of ['show_institution', 'show_study_program', 'show_graduation_year'] as const) {
+        if (edited && edited[flag] !== original[flag]) conflicts.push({ key: `${original.membership_id}:${flag}`, label: `${original.institution} · ${original.study_program}: ${flag.replaceAll('_', ' ')}`, original: original[flag], current: current?.[flag] ?? '(membership unavailable)', draft: edited[flag] })
+      }
+    }
+  }
+  function applySelected(selected: Set<string>) {
+    if (!latest) return
+    const merged = choices(latest).map((item) => ({ ...item }))
+    for (const field of conflicts) {
+      if (!selected.has(field.key) || field.key === 'enabled') continue
+      const [id, flag] = field.key.split(':') as [string, keyof Omit<AcademicConsent, 'membership_id'>]
+      const target = merged.find((item) => item.membership_id === id)
+      const edited = affiliations.find((item) => item.membership_id === id)
+      if (target && edited) target[flag] = edited[flag]
+    }
+    for (const item of merged) {
+      if (!item.show_institution) { item.show_study_program = false; item.show_graduation_year = false }
+    }
+    const nextEnabled = selected.has('enabled') && latest.eligible && visibility === 'public' ? enabled : latest.directory_discoverable
+    setDraft({ origin: latest, enabled: nextEnabled, affiliations: merged })
+    setLatest(undefined)
+    setError(null)
+    setMessage('Review the updated draft, then save if it reflects your choice.')
   }
   async function save(event: React.FormEvent) {
     event.preventDefault()
@@ -52,19 +102,24 @@ function DiscoveryForm({ initial, visibility, onReload }: { initial: DiscoverySe
     if (!Object.keys(patch).length) { setMessage('No changes to save.'); return }
     setBusy(true)
     try {
-      const latest = await getDiscovery(getToken, new AbortController().signal)
-      if (latest.directory_discoverable !== saved.directory_discoverable || JSON.stringify(choices(latest)) !== JSON.stringify(choices(saved)))
-        throw new ApiError(409, 'discovery_changed')
-      const result = await updateDiscovery(getToken, patch)
+      // Compare-and-set is enforced in PostgreSQL. Never fetch a newer ETag
+      // immediately before saving an older draft.
+      if (!saved.__etag) throw new ApiError(428, 'revision_missing')
+      const result = await updateDiscovery(getToken, patch, saved.__etag)
+      setDraft({ origin: result, enabled: result.directory_discoverable, affiliations: choices(result) })
       client.setQueryData(['professional', user?.id, 'profile/discovery'], result)
       setMessage(result.effective_discoverable ? 'Your profile can now appear in Alumni Directory.' : 'Directory discovery is off. Your academic choices are no longer published here.')
       client.removeQueries({ queryKey: ['directory'] })
       client.removeQueries({ queryKey: ['public-profile'] })
       await client.invalidateQueries({ queryKey: ['professional', user?.id, 'profile/discovery'] })
-    } catch (failure) { setError(failure) } finally { setBusy(false) }
+    } catch (failure) {
+      setError(failure)
+      if (failure instanceof ApiError && failure.status === 412) void reloadLatest()
+    } finally { setBusy(false) }
   }
   const errorText = error instanceof ApiError ?
-    error.code === 'discovery_changed' ? 'Discovery settings changed in another session. Reload them before saving.' :
+    error.status === 412 || error.code === 'discovery_changed' ? 'Discovery settings changed in another session. Your draft is preserved. Reload and review before saving again.' :
+      error.status === 428 ? 'The revision is missing. Reload your settings before saving.' :
       error.status === 401 ? 'Your session expired. Sign in again to update discovery.' :
         error.status === 404 ? 'Your profile or membership is no longer available. Reload this page.' :
           error.status === 409 ? 'Your current profile or verification status does not allow this choice. Reload your settings.' :
@@ -76,14 +131,14 @@ function DiscoveryForm({ initial, visibility, onReload }: { initial: DiscoverySe
     <h2 id="discovery-heading">Alumni Directory discovery</h2>
     <p className="muted">A public profile link and an Alumni Directory listing are separate choices. Only a public, visible profile with a trusted verified alumni membership can be listed.</p>
     <p className="discovery-status" role="status"><strong>Status:</strong> {saved.effective_discoverable ? 'Listed when public search matches' : 'Not listed in Alumni Directory'}</p>
-    {!initial.eligible && <p className="discovery-ineligible">{visibility === 'private' ? 'Publish your profile first if you want to request listing. Publication alone does not turn on discovery.' : 'Directory listing requires a verified alumni membership and a visible public profile. Student and pending alumni memberships are not eligible.'}</p>}
+    {!saved.eligible && <p className="discovery-ineligible">{visibility === 'private' ? 'Publish your profile first if you want to request listing. Publication alone does not turn on discovery.' : 'Directory listing requires a verified alumni membership and a visible public profile. Student and pending alumni memberships are not eligible.'}</p>}
     <form onSubmit={(event) => void save(event)}>
       <fieldset disabled={busy} className="form-fieldset">
         <label className="privacy-choice discovery-choice"><span><strong>Include my profile in Alumni Directory</strong><small>Explicit opt-in. You can withdraw this choice at any time.</small></span><input type="checkbox" checked={enabled} disabled={!canOptIn && !enabled} onChange={(event) => { setDraft({ ...active, enabled: event.target.checked }) }} /></label>
         <h3>Academic details in Directory</h3>
         <p className="muted">Choose what to publish for each verified alumni membership. These choices do not change professional field visibility. Institution is required before study program or graduation year.</p>
-        {initial.memberships.length === 0 ? <p>No verified alumni memberships are available for academic disclosure.</p> :
-          initial.memberships.map((membership) => {
+        {saved.memberships.length === 0 ? <p>No verified alumni memberships are available for academic disclosure.</p> :
+          saved.memberships.map((membership) => {
             const current = affiliations.find((item) => item.membership_id === membership.membership_id)
             if (!current) return null
             return <fieldset className="discovery-membership" key={membership.membership_id} disabled={!enabled || busy}>
@@ -95,8 +150,10 @@ function DiscoveryForm({ initial, visibility, onReload }: { initial: DiscoverySe
           })}
       </fieldset>
       {error !== null && <p className="profile-error" role="alert">{errorText}</p>}
+      {latest && <ConflictReview key={latest.__etag} fields={conflicts} onApply={applySelected} />}
+      {reloadError && <p className="profile-error" role="alert">Current discovery settings could not be loaded. Your draft is preserved.</p>}
       {message && <p className="profile-success" role="status">{message}</p>}
-      <div className="form-actions"><Button disabled={busy}>{busy ? 'Saving…' : 'Save discovery settings'}</Button><Button type="button" variant="outline" disabled={busy} onClick={onReload}>Reload settings</Button></div>
+      <div className="form-actions"><Button disabled={busy || !!latest}>{busy ? 'Saving…' : 'Save discovery settings'}</Button><Button type="button" variant="outline" disabled={busy} onClick={() => void reloadLatest()}>Reload settings</Button></div>
     </form>
   </section>
 }

@@ -34,7 +34,8 @@ func (s *Store) Onboard(ctx context.Context, userID uuid.UUID, input identity.On
 	defer tx.Rollback(ctx)
 
 	var lockedID uuid.UUID
-	if err := tx.QueryRow(ctx, `SELECT id FROM users WHERE id=$1 FOR UPDATE`, userID).Scan(&lockedID); err != nil {
+	var previousName string
+	if err := tx.QueryRow(ctx, `SELECT id,COALESCE(display_name,'') FROM users WHERE id=$1 FOR UPDATE`, userID).Scan(&lockedID, &previousName); err != nil {
 		return identity.User{}, err
 	}
 
@@ -69,6 +70,14 @@ func (s *Store) Onboard(ctx context.Context, userID uuid.UUID, input identity.On
  VALUES ($1,$2,$3,$4,$5) ON CONFLICT (user_id, study_program_id, role) DO NOTHING`, userID, programID, input.Role, status, input.GraduationYear)
 	if err != nil {
 		return identity.User{}, err
+	}
+	// Onboarding can run after a public profile already exists. A changed
+	// display name changes its owner representation and must invalidate old
+	// profile ETags in the same transaction.
+	if previousName != input.DisplayName {
+		if _, err = tx.Exec(ctx, `UPDATE profiles SET content_revision=content_revision+1,updated_at=now() WHERE user_id=$1`, userID); err != nil {
+			return identity.User{}, err
+		}
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return identity.User{}, err

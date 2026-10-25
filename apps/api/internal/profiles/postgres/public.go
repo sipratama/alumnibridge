@@ -45,18 +45,28 @@ func (s *Store) Public(ctx context.Context, slug string) (profiles.Publication, 
 	return p, nil
 }
 
-const privacyColumns = `visibility,show_bio,show_location,show_current_company,show_current_job_title,show_experiences,show_educations,show_skills,show_photo`
+const privacyColumns = `visibility,show_bio,show_location,show_current_company,show_current_job_title,show_experiences,show_educations,show_skills,show_photo,privacy_revision`
 
 func scanPrivacy(row pgx.Row) (profiles.Privacy, error) {
 	var p profiles.Privacy
-	err := row.Scan(&p.Visibility, &p.ShowBio, &p.ShowLocation, &p.ShowCurrentCompany, &p.ShowCurrentJobTitle, &p.ShowExperiences, &p.ShowEducations, &p.ShowSkills, &p.ShowPhoto)
+	err := row.Scan(&p.Visibility, &p.ShowBio, &p.ShowLocation, &p.ShowCurrentCompany, &p.ShowCurrentJobTitle, &p.ShowExperiences, &p.ShowEducations, &p.ShowSkills, &p.ShowPhoto, &p.Revision)
 	return p, missing(err)
 }
 func (s *Store) Privacy(ctx context.Context, id uuid.UUID) (profiles.Privacy, error) {
 	return scanPrivacy(s.db.QueryRow(ctx, `SELECT `+privacyColumns+` FROM profiles WHERE user_id=$1`, id))
 }
 func (s *Store) UpdatePrivacy(ctx context.Context, id uuid.UUID, p profiles.PrivacyPatch) (profiles.Privacy, error) {
-	return scanPrivacy(s.db.QueryRow(ctx, `UPDATE profiles SET visibility=$2,show_bio=COALESCE($3,show_bio),show_location=COALESCE($4,show_location),show_current_company=COALESCE($5,show_current_company),show_current_job_title=COALESCE($6,show_current_job_title),show_experiences=COALESCE($7,show_experiences),show_educations=COALESCE($8,show_educations),show_skills=COALESCE($9,show_skills),show_photo=COALESCE($10,show_photo),updated_at=now() WHERE user_id=$1 RETURNING `+privacyColumns, id, p.Visibility, p.ShowBio, p.ShowLocation, p.ShowCurrentCompany, p.ShowCurrentJobTitle, p.ShowExperiences, p.ShowEducations, p.ShowSkills, p.ShowPhoto))
+	return scanPrivacy(s.db.QueryRow(ctx, `UPDATE profiles SET visibility=$2,show_bio=COALESCE($3,show_bio),show_location=COALESCE($4,show_location),show_current_company=COALESCE($5,show_current_company),show_current_job_title=COALESCE($6,show_current_job_title),show_experiences=COALESCE($7,show_experiences),show_educations=COALESCE($8,show_educations),show_skills=COALESCE($9,show_skills),show_photo=COALESCE($10,show_photo),privacy_revision=privacy_revision+1,updated_at=now() WHERE user_id=$1 RETURNING `+privacyColumns, id, p.Visibility, p.ShowBio, p.ShowLocation, p.ShowCurrentCompany, p.ShowCurrentJobTitle, p.ShowExperiences, p.ShowEducations, p.ShowSkills, p.ShowPhoto))
+}
+// SQL predicate and revision increment are one statement: no stale side effects.
+func (s *Store) UpdatePrivacyConditional(ctx context.Context, id uuid.UUID, p profiles.PrivacyPatch, expected int64) (profiles.Privacy, error) {
+ out, err := scanPrivacy(s.db.QueryRow(ctx, `UPDATE profiles SET visibility=$2,show_bio=COALESCE($3,show_bio),show_location=COALESCE($4,show_location),show_current_company=COALESCE($5,show_current_company),show_current_job_title=COALESCE($6,show_current_job_title),show_experiences=COALESCE($7,show_experiences),show_educations=COALESCE($8,show_educations),show_skills=COALESCE($9,show_skills),show_photo=COALESCE($10,show_photo),privacy_revision=privacy_revision+1,updated_at=now() WHERE user_id=$1 AND privacy_revision=$11 RETURNING `+privacyColumns, id,p.Visibility,p.ShowBio,p.ShowLocation,p.ShowCurrentCompany,p.ShowCurrentJobTitle,p.ShowExperiences,p.ShowEducations,p.ShowSkills,p.ShowPhoto,expected))
+ if err == profiles.ErrNotFound {
+  var exists bool
+  if qerr := s.db.QueryRow(ctx,`SELECT EXISTS(SELECT 1 FROM profiles WHERE user_id=$1)`,id).Scan(&exists); qerr != nil {return out,qerr}
+  if exists {return out,profiles.ErrStale}
+ }
+ return out,err
 }
 func (s *Store) OwnerPhoto(ctx context.Context, id uuid.UUID) (profiles.Photo, error) {
 	var p profiles.Photo

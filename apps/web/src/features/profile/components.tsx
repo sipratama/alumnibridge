@@ -212,12 +212,16 @@ export function ConfirmDelete({
   error,
   onClose,
   onConfirm,
+  children,
+  confirmDisabled = false,
 }: {
   title: string
   busy: boolean
   error: unknown
   onClose: () => void
   onConfirm: () => void
+  children?: ReactNode
+  confirmDisabled?: boolean
 }) {
   return (
     <Dialog title={title} onClose={onClose} busy={busy}>
@@ -226,11 +230,12 @@ export function ConfirmDelete({
         later.
       </p>
       <Feedback error={error} />
+      {children}
       <div className="form-actions">
         <Button variant="outline" disabled={busy} onClick={onClose}>
           Keep entry
         </Button>
-        <Button className="danger-button" disabled={busy} onClick={onConfirm}>
+        <Button className="danger-button" disabled={busy || confirmDisabled} onClick={onConfirm}>
           {busy ? 'Removing…' : 'Remove entry'}
         </Button>
       </div>

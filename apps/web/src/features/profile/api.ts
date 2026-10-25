@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/app/authContext'
-import { apiRequest, apiResponse, request, ApiError } from '@/shared/api/client'
+import { apiRequest, apiResponse, request, versionedRequest, ApiError, type WithETag } from '@/shared/api/client'
 
-export type Profile = {
+export type Profile = WithETag & {
   display_name: string
   slug: string
   headline: string
@@ -12,7 +12,7 @@ export type Profile = {
   current_job_title: string
   completeness: number
 }
-export type ProfileInput = Omit<Profile, 'completeness'>
+export type ProfileInput = Omit<Profile, 'completeness' | '__etag'>
 export type ExperienceInput = {
   company: string
   job_title: string
@@ -23,7 +23,7 @@ export type ExperienceInput = {
   is_current: boolean
   description: string
 }
-export type Experience = ExperienceInput & { id: string }
+export type Experience = ExperienceInput & { id: string; revision: number }
 export type EducationInput = {
   institution: string
   degree: string
@@ -32,7 +32,7 @@ export type EducationInput = {
   end_date?: string | null
   description: string
 }
-export type Education = EducationInput & { id: string }
+export type Education = EducationInput & { id: string; revision: number }
 export type Skill = { id: string; name: string }
 export const privacyFields = {
   show_bio: 'About',
@@ -47,7 +47,7 @@ export const privacyFields = {
 export type Privacy = { visibility: 'private' | 'public' } & Record<
   keyof typeof privacyFields,
   boolean
->
+> & WithETag
 export type PublicProfile = Pick<
   Profile,
   'display_name' | 'slug' | 'headline'
@@ -66,10 +66,16 @@ export const ownerPath = '/users/me'
 export const publicKey = ['public-profile'] as const
 export function useOwnerQuery<T>(resource: string) {
   const { getToken, user } = useAuth()
+  const versioned = resource === 'profile' || resource === 'profile/privacy' || resource === 'profile/discovery'
   return useQuery({
     queryKey: ['professional', user?.id, resource],
     queryFn: ({ signal }) =>
-      request<T>(`${ownerPath}/${resource}`, getToken, { signal }),
+      versioned
+        ? versionedRequest(`${ownerPath}/${resource}`, getToken, { signal }) as Promise<T>
+        : request<T>(`${ownerPath}/${resource}`, getToken, { signal }),
+    // The validator is intentionally non-enumerable on the response body.
+    // Deep structural sharing would copy a changed body without its ETag.
+    structuralSharing: !versioned,
     retry: false,
   })
 }
@@ -128,6 +134,10 @@ export function errorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 401)
       return 'Your session expired. Sign in again to continue.'
+    if (error.status === 412)
+      return 'These settings changed in another session. Your edits are preserved; reload and review the latest values before retrying.'
+    if (error.status === 428)
+      return 'Your settings revision is unavailable. Reload the page before saving.'
     if (error.status === 409)
       return 'This change conflicts with saved data or the collection limit. Review your entries and try again.'
     if (error.status === 413)

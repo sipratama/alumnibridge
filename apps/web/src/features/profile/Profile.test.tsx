@@ -55,6 +55,7 @@ const profile: Profile = {
   current_company: '',
   current_job_title: '',
   completeness: 11,
+  __etag: '"ab-profile-v1"',
 }
 const privacy: Privacy = {
   visibility: 'private',
@@ -62,6 +63,8 @@ const privacy: Privacy = {
 } as Privacy
 let savedProfile: Profile
 let savedPrivacy: Privacy
+let privacyRevision: number
+let profileRevision: number
 let experiences: Record<string, unknown>[]
 let educations: Record<string, unknown>[]
 let skills: { id: string; name: string }[]
@@ -93,6 +96,8 @@ function renderPage(element: React.ReactNode, path = '/profile') {
 beforeEach(() => {
   savedProfile = { ...profile }
   savedPrivacy = { ...privacy }
+  privacyRevision = 1
+  profileRevision = 1
   experiences = []
   educations = []
   skills = []
@@ -130,12 +135,30 @@ beforeEach(() => {
           memberships: [],
         })
       if (path === '/users/me/profile/privacy') {
-        if (method === 'PATCH') savedPrivacy = { ...savedPrivacy, ...body }
-        return response(savedPrivacy)
+        const currentETag = `"ab-privacy-v${privacyRevision}"`
+        if (method === 'PATCH') {
+          const supplied = (init?.headers as Record<string, string> | undefined)?.['If-Match']
+          if (supplied && supplied !== currentETag) return response({ error: 'stale_revision' }, 412)
+          savedPrivacy = { ...savedPrivacy, ...body }
+          privacyRevision++
+        }
+        return new Response(JSON.stringify(savedPrivacy), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ETag: `"ab-privacy-v${privacyRevision}"` },
+        })
       }
       if (path === '/users/me/profile') {
-        if (method === 'PATCH') savedProfile = { ...savedProfile, ...body }
-        return response(savedProfile)
+        if (method === 'PATCH') {
+          const expected = (init?.headers as Record<string, string> | undefined)?.['If-Match']
+          if (!expected) return response({ error: 'precondition_required' }, 428)
+          if (expected !== `"ab-profile-v${profileRevision}"`) return response({ error: 'stale_revision' }, 412)
+          savedProfile = { ...savedProfile, ...body }
+          profileRevision++
+        }
+        return new Response(JSON.stringify(savedProfile), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ETag: `"ab-profile-v${profileRevision}"` },
+        })
       }
       for (const [kind, list] of [
         ['experiences', experiences],
@@ -145,7 +168,7 @@ beforeEach(() => {
         if (path.startsWith(`/users/me/${kind}`)) {
           const id = path.split('/')[4]
           if (method === 'POST') {
-            const entry = { id: `new-${kind}`, ...body }
+            const entry = { id: `new-${kind}`, revision: 1, ...body }
             list.push(entry as never)
             return response(entry, 201)
           }
@@ -159,6 +182,7 @@ beforeEach(() => {
           if (method === 'PATCH') {
             const entry = list.find((item) => item.id === id)
             Object.assign(entry!, body)
+            if (entry) (entry as Record<string, unknown>).revision = Number((entry as Record<string, unknown>).revision ?? 1) + 1
             return response(entry)
           }
           return response(list)
@@ -265,6 +289,7 @@ describe('owner professional profile', () => {
   })
   it('detects a changed dirty field in another session without overwriting it', async () => {
     savedProfile.headline = 'Changed elsewhere'
+    profileRevision = 2
     renderPage(
       <ProfileEditor profile={profile} onClose={vi.fn()} onSaved={vi.fn()} />,
     )
@@ -276,7 +301,32 @@ describe('owner professional profile', () => {
     expect(screen.getByLabelText('Professional headline')).toHaveValue(
       'My unsaved draft',
     )
-    expect(calls.filter((call) => call.method === 'PATCH')).toHaveLength(0)
+    expect(calls.filter((call) => call.method === 'PATCH')).toHaveLength(1)
+    expect(await screen.findByRole('region', { name: 'Review current server values' })).toHaveTextContent('Changed elsewhere')
+    expect(screen.getByRole('button', { name: 'Save profile' })).toBeDisabled()
+    click('Apply selected edits to latest draft')
+    expect(screen.getByLabelText('Professional headline')).toHaveValue('My unsaved draft')
+    click('Save profile')
+    await waitFor(() => expect(savedProfile.headline).toBe('My unsaved draft'))
+    const patches = calls.filter((call) => call.method === 'PATCH')
+    expect((patches[1].headers as Record<string, string>)['If-Match']).toBe('"ab-profile-v2"')
+  })
+  it('keeps a profile draft mounted when background profile refresh fails', async () => {
+    const original = fetch
+    let failRefresh = false
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      if (failRefresh && url.endsWith('/users/me/profile') && !init?.method) throw new TypeError('offline')
+      return original(url, init)
+    }))
+    renderPage(<ProfilePage />)
+    await screen.findByText('Ari Member')
+    click('Edit profile')
+    change('Professional headline', 'Draft during outage')
+    failRefresh = true
+    await act(async () => { await clients[0].invalidateQueries({ queryKey: ['professional', 'owner', 'profile'] }) })
+    expect(await screen.findByText(/Profile could not be refreshed/)).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Edit professional profile' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Professional headline')).toHaveValue('Draft during outage')
   })
 })
 
@@ -347,6 +397,78 @@ describe('experience and education', () => {
     click('Delete education 1')
     click('Remove entry')
     expect(await screen.findByText(/Add where you learned/)).toBeInTheDocument()
+  })
+  it('keeps a selected history item when deletion meets a stale revision', async () => {
+    experiences = [{ id: 'selected-item', revision: 3, company: 'Campus Lab', job_title: 'Researcher', start_date: '2024-02-01' }]
+    rejectPath = '/users/me/experiences/selected-item'
+    rejectStatus = 412
+    renderPage(<HistorySection kind="experiences" />)
+    await screen.findByRole('heading', { name: 'Researcher' })
+    click('Delete experience 1')
+    click('Remove entry')
+    expect(await screen.findByText(/changed in another session/)).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Remove experience?' })).toBeInTheDocument()
+    const deletion = calls.find((call) => call.method === 'DELETE')
+    expect((deletion?.headers as Record<string, string> | undefined)?.['If-Match']).toBe('"ab-experience-selected-item-v3"')
+    expect(experiences).toHaveLength(1)
+    expect(await screen.findByText(/Review the current entry before deleting/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove entry' })).toBeDisabled()
+    rejectPath = undefined
+    experiences[0].revision = 4
+    experiences[0].job_title = 'New server role'
+    click('Reload current entry')
+    await waitFor(() => expect(screen.getByText(/Current: New server role/)).toBeInTheDocument())
+    click('Use current entry revision for deletion')
+    click('Remove entry')
+    await screen.findByText(/Every path starts somewhere/)
+    const deletions = calls.filter((call) => call.method === 'DELETE')
+    expect((deletions[1].headers as Record<string, string>)['If-Match']).toBe('"ab-experience-selected-item-v4"')
+  })
+  it.each(['experiences', 'educations'] as const)('preserves a %s edit draft and explicitly rebases after 412', async (kind) => {
+    const entry = kind === 'experiences'
+      ? { id: 'selected-item', revision: 1, company: 'Campus Lab', job_title: 'Researcher', start_date: '2024-02-01' }
+      : { id: 'selected-item', revision: 1, institution: 'Campus Lab', degree: 'BSc' }
+    if (kind === 'experiences') experiences = [entry]
+    else educations = [entry]
+    renderPage(<HistorySection kind={kind} />)
+    await screen.findByText('Campus Lab')
+    click(kind === 'experiences' ? 'Edit experience 1' : 'Edit education 1')
+    const label = kind === 'experiences' ? 'Job title' : 'Degree'
+    const save = kind === 'experiences' ? 'Save experience' : 'Save education'
+    change(label, 'My draft')
+    entry.revision = 2
+    if (kind === 'experiences') entry.job_title = 'Server title'
+    else entry.degree = 'Server degree'
+    rejectPath = `/users/me/${kind}/selected-item`
+    rejectStatus = 412
+    click(save)
+    expect(await screen.findByRole('region', { name: 'Review current server values' })).toHaveTextContent('My draft')
+    expect(screen.getByLabelText(label)).toHaveValue('My draft')
+    expect(screen.getByRole('button', { name: save })).toBeDisabled()
+    rejectPath = undefined
+    click('Apply selected edits to latest draft')
+    click(save)
+    await waitFor(() => expect(entry[kind === 'experiences' ? 'job_title' : 'degree']).toBe('My draft'))
+    const patches = calls.filter((call) => call.method === 'PATCH')
+    expect((patches[1].headers as Record<string, string>)['If-Match']).toBe(`"ab-${kind === 'experiences' ? 'experience' : 'education'}-selected-item-v2"`)
+  })
+  it('keeps an experience draft mounted when background list refresh fails', async () => {
+    experiences = [{ id: 'selected-item', revision: 1, company: 'Campus Lab', job_title: 'Researcher', start_date: '2024-02-01' }]
+    const original = fetch
+    let failRefresh = false
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      if (failRefresh && url.endsWith('/users/me/experiences') && !init?.method) throw new TypeError('offline')
+      return original(url, init)
+    }))
+    renderPage(<HistorySection kind="experiences" />)
+    await screen.findByRole('heading', { name: 'Researcher' })
+    click('Edit experience 1')
+    change('Job title', 'Draft during outage')
+    failRefresh = true
+    await act(async () => { await clients[0].invalidateQueries({ queryKey: ['professional', 'owner', 'experiences'] }) })
+    expect(await screen.findByText(/Experience could not be refreshed/)).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Edit experience' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Job title')).toHaveValue('Draft during outage')
   })
 })
 
@@ -441,10 +563,53 @@ describe('privacy and public projection', () => {
     renderPage(<PrivacyPage />)
     await screen.findByRole('radio', { name: /^Private/ })
     savedPrivacy = { ...savedPrivacy, visibility: 'public' }
+    privacyRevision++
     click('Save privacy settings')
     expect(
       await screen.findByText(/Privacy settings changed in another session/),
     ).toBeInTheDocument()
+    const privacyPatches = calls.filter((call) => call.method === 'PATCH' && call.path === '/users/me/profile/privacy')
+    expect(privacyPatches).toHaveLength(1)
+    expect((privacyPatches[0].headers as Record<string, string>)['If-Match']).toBe('"ab-privacy-v1"')
+    expect(savedPrivacy.visibility).toBe('public')
+    click('Reload current settings')
+    expect(await screen.findByRole('region', { name: 'Review current server values' })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /^Private/ })).toBeChecked()
+    expect(calls.filter((call) => call.method === 'PATCH' && call.path === '/users/me/profile/privacy')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Save privacy settings' })).toBeDisabled()
+    click('Apply selected edits to latest draft')
+    expect(screen.getByRole('radio', { name: /^Public/ })).toBeChecked()
+    fireEvent.click(screen.getByRole('radio', { name: /^Private/ }))
+    click('Save privacy settings')
+    await screen.findByText(/Profile is private. New anonymous/)
+    const patches = calls.filter((call) => call.method === 'PATCH' && call.path === '/users/me/profile/privacy')
+    expect(patches).toHaveLength(2)
+    expect((patches[1].headers as Record<string, string>)['If-Match']).toBe('"ab-privacy-v2"')
+  })
+  it('does not republish after a stale PRIVATE withdrawal unless the owner explicitly consents again', async () => {
+    savedPrivacy = { ...savedPrivacy, visibility: 'public' }
+    renderPage(<PrivacyPage />)
+    await screen.findByRole('radio', { name: /^Public/ })
+    expect(screen.getByRole('radio', { name: /^Public/ })).toBeChecked()
+    fireEvent.click(screen.getByRole('radio', { name: /^Private/ }))
+    savedPrivacy = { ...savedPrivacy, visibility: 'private' }
+    privacyRevision++
+    click('Save privacy settings')
+    await screen.findByRole('region', { name: 'Review current server values' })
+    expect(savedPrivacy.visibility).toBe('private')
+    click('Apply selected edits to latest draft')
+    expect(screen.getByRole('radio', { name: /^Private/ })).toBeChecked()
+    expect(calls.filter((call) => call.method === 'PATCH' && call.path === '/users/me/profile/privacy')).toHaveLength(1)
+  })
+  it('keeps a privacy draft when the explicit server reload fails', async () => {
+    renderPage(<PrivacyPage />)
+    fireEvent.click(await screen.findByRole('radio', { name: /^Public/ }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'About' }))
+    vi.mocked(fetch).mockRejectedValueOnce(new TypeError('offline'))
+    click('Reload current settings')
+    expect(await screen.findByText(/Could not reload current settings/)).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /^Public/ })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'About' })).toBeChecked()
     expect(calls.filter((call) => call.method === 'PATCH')).toHaveLength(0)
   })
   it('renders a public allowlist anonymously without owner requests or verification inference', async () => {

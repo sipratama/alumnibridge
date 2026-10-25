@@ -34,8 +34,8 @@ All paths are below `/api/v1`. OpenAPI contains the implemented Phase B routes. 
 | `GET /users/me/skills` | Owner skills | Bounded list |
 | `POST /users/me/skills` | Add or reuse a normalized skill | Owner DTO |
 | `DELETE /users/me/skills/{id}` | Remove owned skill link | 204 |
-| `POST /users/me/profile/photo` | Upload/replace one validated image | 201 with photo metadata |
-| `DELETE /users/me/profile/photo` | Remove image | 204 |
+| `POST /users/me/profile/photo` | Upload/replace one validated image with required profile `If-Match`; stale staging is queued for cleanup | 201 with photo metadata and new profile ETag |
+| `DELETE /users/me/profile/photo` | Remove image with required profile `If-Match` | 204 with current profile ETag |
 | `GET /profiles/{slug}` | Read an opted-in public profile | Public allowlist DTO or non-disclosing 404 |
 
 Use 400 for malformed input, 401 for missing/invalid token, 404 for absent or non-owned resources, 409 for slug conflicts, 413 for oversized uploads, and 415 for unsupported media. Owner collection responses must have hard limits. Public photos require an access-controlled delivery path designed in Phase C; no direct private object key appears in public DTOs.

@@ -71,9 +71,32 @@ func TestProvisionAndOnboardPostgres(t *testing.T) {
 	if err != nil || len(user.Memberships) != 1 || user.Memberships[0].Status != "active" {
 		t.Fatalf("student=%+v err=%v", user, err)
 	}
+	slug := "onboard-revision-" + uuid.NewString()
+	if _, err := db.Exec(ctx, `INSERT INTO profile_slug_history(slug,user_id) VALUES($1,$2)`, slug, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO profiles(user_id,slug) VALUES($1,$2)`, id, slug); err != nil {
+		t.Fatal(err)
+	}
+	var initialRevision int64
+	if err := db.QueryRow(ctx, `SELECT content_revision FROM profiles WHERE user_id=$1`, id).Scan(&initialRevision); err != nil {
+		t.Fatal(err)
+	}
 	user, err = store.Onboard(ctx, id, student)
 	if err != nil || len(user.Memberships) != 1 {
 		t.Fatalf("idempotent student=%+v err=%v", user, err)
+	}
+	var revision int64
+	if err := db.QueryRow(ctx, `SELECT content_revision FROM profiles WHERE user_id=$1`, id).Scan(&revision); err != nil || revision != initialRevision {
+		t.Fatalf("idempotent onboarding changed profile revision: %d %v", revision, err)
+	}
+	renamed := student
+	renamed.DisplayName = "Renamed Integration User"
+	if _, err := store.Onboard(ctx, id, renamed); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(ctx, `SELECT content_revision FROM profiles WHERE user_id=$1`, id).Scan(&revision); err != nil || revision != initialRevision+1 {
+		t.Fatalf("display-name change did not advance profile revision: %d %v", revision, err)
 	}
 	year := 2020
 	alumni := student
