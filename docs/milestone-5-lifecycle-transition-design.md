@@ -20,6 +20,8 @@ Keycloak disablement and object deletion happen outside PostgreSQL; neither can 
 
 **Development follow-up:** The [lifecycle race hardening review](milestone-5-lifecycle-race-hardening.md) maps the merged lock graph and adds active-user row guards to application owner writes. Photo activation now takes user before staging/profile. Direct trusted membership SQL still begins with the membership row and is outside that application guard. A future writer must resolve this order and require full-transaction retry before deletion is enabled; the synthetic transition in the tests is not a production writer or policy approval.
 
+The later [membership boundary review](milestone-5-membership-lifecycle-boundary.md) adds a trigger that checks active user state for membership SQL, while preserving the requirement that trusted UPDATE/DELETE callers acquire the user lock before their membership row. The trigger cannot reverse PostgreSQL's row-lock order after a raw UPDATE/DELETE begins. No production lifecycle writer or policy approval follows from this development guard.
+
 ## Proposed state and publication matrix
 
 | State | Protected owner request after access check | Public profile/photo/directory | Allowed transition |
