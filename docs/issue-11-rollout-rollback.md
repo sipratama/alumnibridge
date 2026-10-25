@@ -1,6 +1,6 @@
 # Issue #11 rollout and rollback runbook
 
-**Status:** Review procedure, not deployment authorization. Keep PR #22 draft and Issue #11 open until the maintainer accepts the release gates. This runbook assumes PostgreSQL 17, the current single API process image, React static assets, Keycloak, and MinIO-compatible photo storage. Assign an operator and a rollback decision maker before a production window.
+**Status:** Review procedure, not deployment authorization. PR #22 is merged; Issue #11 remains open until the maintainer accepts the production release gates. This runbook assumes PostgreSQL 17, the current single API process image, React static assets, Keycloak, and MinIO-compatible photo storage. Assign an operator and a rollback decision maker before a production window.
 
 ## Boundary and compatibility
 
