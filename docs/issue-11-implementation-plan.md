@@ -1,6 +1,6 @@
 # Issue #11 — Implementation phases and release gates
 
-**Status:** Local implementation and security verification in progress. Mandatory conditional writes cover profile, privacy/discovery, photo pointer actions, and existing experience/education items. Skills and history POST use owner-serialized set/append semantics without collection validators. Final release conditions are recorded in [the remediation review](issue-11-remediation-review.md). Issue #11 remains open and production is blocked.
+**Status:** Mandatory conditional writes cover profile, privacy/discovery, photo pointer actions, and existing experience/education items. Skills and history POST use owner-serialized set/append semantics without collection validators. Four-job and dedicated PostgreSQL CI passed on `3988340d3cc3ff28e1cb5e55aceeb0b587a41ff1` ([runs 40144759074](https://github.com/sipratama/alumnibridge/actions/runs/40144759074) and [40144759101](https://github.com/sipratama/alumnibridge/actions/runs/40144759101)). Later browser/runbook/race-evidence commits need new exact-SHA CI after push. Issue #11 remains open and production is blocked pending independent review and the [rollout runbook](issue-11-rollout-rollback.md).
 **Approved design:** [ADR 0003 proposal](decisions/0003-atomic-optimistic-concurrency-proposal.md) (maintainer approved 2026-10-24).
 **Branch:** `security/issue-11-optimistic-concurrency` from design commit `cba2ca0`.
 
@@ -51,6 +51,6 @@ Committed `000007_resource_revisions.up/down.sql`:
 
 ## Current gates
 
-1. Complete the focused mutation and React conflict audit in the [remediation review](issue-11-remediation-review.md), including the explicitly unguarded collection/photo routes.
-2. Validate the final committed SHA in GitHub CI after maintainer approval to push. Local test results must not be attributed to that future SHA.
-3. Keep Issue #11 open and public production launch blocked pending formal review and maintainer release decisions.
+1. Review the [reproducible two-session browser harness](issue-11-browser-e2e.md), its sanitized [PASS report on application source `3988340`](evidence/issue11-browser-local.md), the [rollout/rollback runbook](issue-11-rollout-rollback.md), and the account-deletion/photo-race test. The earlier local browser account was disposable; independent reviewer approval is still required.
+2. Validate every new pushed commit's exact SHA in both GitHub workflows. The green runs at `3988340` do not test later commits.
+3. Keep Issue #11 open, PR #22 draft, and public production launch blocked pending independent security review and maintainer release decisions.
