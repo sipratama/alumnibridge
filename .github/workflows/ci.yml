@@ -142,7 +142,9 @@ jobs:
 
       - name: PostgreSQL + MinIO integration tests
         working-directory: apps/api
-        run: go test -count=1 ./...
+        # Packages share one disposable database; a failure-injection trigger is database-wide.
+        # Serialize packages while retaining concurrency inside each two-connection test.
+        run: go test -count=1 -p 1 ./...
 
       - name: Integration diagnostics on failure
         if: failure()

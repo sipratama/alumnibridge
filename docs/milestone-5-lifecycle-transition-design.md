@@ -18,6 +18,8 @@ Keycloak disablement and object deletion happen outside PostgreSQL; neither can 
 
 **Lock and race review required:** map actual profile/privacy, discovery, membership triggers, photo activation and onboarding lock order against `users → profile → affiliations` and `photo staging object → profile`. An advisory lock and user lock at the lifecycle writer do not by themselves stop an owner request that already passed middleware and may mutate only a profile row. Either make all relevant owner mutations serialize against the user state in the same database transaction, or prove an equivalent conditional write that checks the current state at commit. Test both transaction orders. A public read that began before the withdrawal commit may finish with the old snapshot; document the effective revocation boundary and any cache behavior rather than promising impossible retroactive cancellation.
 
+**Development follow-up:** The [lifecycle race hardening review](milestone-5-lifecycle-race-hardening.md) maps the merged lock graph and adds active-user row guards to application owner writes. Photo activation now takes user before staging/profile. Direct trusted membership SQL still begins with the membership row and is outside that application guard. A future writer must resolve this order and require full-transaction retry before deletion is enabled; the synthetic transition in the tests is not a production writer or policy approval.
+
 ## Proposed state and publication matrix
 
 | State | Protected owner request after access check | Public profile/photo/directory | Allowed transition |

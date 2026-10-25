@@ -105,7 +105,7 @@ func write(w http.ResponseWriter, status int, v any) {
 func fail(w http.ResponseWriter, err error) {
 	status, code := http.StatusInternalServerError, "internal_error"
 	switch {
-	case errors.Is(err, identity.ErrAccessDenied):
+	case errors.Is(err, identity.ErrAccessDenied), errors.Is(err, profiles.ErrAccountUnavailable):
 		status, code = http.StatusForbidden, "account_unavailable"
 	case errors.Is(err, profiles.ErrStorage):
 		status, code = 503, "photo_unavailable"
