@@ -1,6 +1,6 @@
 # Issue #11 — Atomic Optimistic Concurrency: Design Proposal
 
-**Status:** Approved design, implemented on the Issue #11 security branch; final acceptance and production release remain pending.
+**Status:** Approved design, implemented and merged to `master` through PR #22; Issue #11 final acceptance and production release remain pending.
 **Date:** 2026-10-24
 **Base:** `master` at `8424ce5628bfcce1bca4371e9548e9f713bb7540`
 **Tracking:** [#11](https://github.com/sipratama/alumnibridge/issues/11)
@@ -10,7 +10,7 @@
 
 ## 1. Problem and current code evidence
 
-The development-only [ADR 0001](decisions/0001-last-writer-wins-development.md) accepts last-writer-wins; it **does not** accept public production deployment. [Milestone 3 final review](reviews/milestone-3-final-review.md) reproduced two same-field signed-JWT PATCH requests returning 200; Phase E reproduced simultaneous discovery PATCH requests returning 200. A stale publication request may restore PUBLIC after another session has saved PRIVATE.
+The development-only [ADR 0001](0001-last-writer-wins-development.md) accepts last-writer-wins; it **does not** accept public production deployment. [Milestone 3 final review](../reviews/milestone-3-final-review.md) reproduced two same-field signed-JWT PATCH requests returning 200; Phase E reproduced simultaneous discovery PATCH requests returning 200. A stale publication request may restore PUBLIC after another session has saved PRIVATE.
 
 Inspected current paths on `master`:
 

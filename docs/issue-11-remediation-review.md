@@ -1,6 +1,6 @@
 # Issue #11 — Security remediation review
 
-**Branch:** `security/issue-11-optimistic-concurrency` (Draft PR #22).
+**Historical implementation branch:** `security/issue-11-optimistic-concurrency` (PR #22 merged to `master` at `dc9851f` on 2026-10-25).
 **Scope:** B1–B3 plus final photo, collection and React conflict remediation. Issue #11 remains open. This document is local review evidence; it does not assert exact-SHA GitHub CI for unpushed commits or production readiness.
 
 ## Corrected findings
@@ -39,7 +39,7 @@ Unconditional service/store methods remain for trusted internal callers and olde
 
 000008 is additive to applied 000001–000007 history. Its down migration restores the 000006 trigger and removes the insert trigger. Down/reapply is suitable for disposable development verification. **Do not downgrade 000008 in a public deployment without an operator-reviewed plan:** the old trigger does not invalidate shared ETags and has the simultaneous last-revocation race. Roll back the application and migration only with writes quiesced and a reviewed consent/ETag reconciliation plan.
 
-At `3988340d3cc3ff28e1cb5e55aceeb0b587a41ff1`, both exact-SHA workflows passed: [four-job CI](https://github.com/sipratama/alumnibridge/actions/runs/40144759074) and [PostgreSQL concurrency CI](https://github.com/sipratama/alumnibridge/actions/runs/40144759101). The 2026-10-25 [PR #22 security review comment](https://github.com/sipratama/alumnibridge/pull/22#issuecomment-6391287367) confirms this but requests reproducible browser evidence, an operational runbook, and account-deletion/photo-race evidence before independent approval. New local commits after `3988340` require their own exact-SHA CI after the maintainer pushes. Draft PR #22 and Issue #11 remain open; production approval is separate.
+At `3988340d3cc3ff28e1cb5e55aceeb0b587a41ff1`, both exact-SHA workflows passed: [four-job CI](https://github.com/sipratama/alumnibridge/actions/runs/40144759074) and [PostgreSQL concurrency CI](https://github.com/sipratama/alumnibridge/actions/runs/40144759101). The 2026-10-25 [PR #22 security review comment](https://github.com/sipratama/alumnibridge/pull/22#issuecomment-6391287367) requested reproducible browser evidence, an operational runbook, and account-deletion/photo-race evidence before independent approval. The later local evidence and merge are described below. Issue #11 remains open; production approval is separate.
 
 ## Local verification
 
