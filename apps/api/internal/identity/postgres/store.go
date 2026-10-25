@@ -15,6 +15,8 @@ type Store struct {
 	issuer string
 }
 
+const subjectAdvisoryLockSQL = `SELECT pg_advisory_xact_lock(hashtextextended(length($1)::text || ':' || $1 || $2, 0))`
+
 func New(db *pgxpool.Pool, issuer string) *Store { return &Store{db: db, issuer: issuer} }
 
 // CheckAccess runs on every verified protected request. A missing user is a
@@ -44,7 +46,7 @@ func (s *Store) Provision(ctx context.Context, subject, email string) (identity.
 	defer tx.Rollback(ctx)
 	// Future marker writers must take this same lock before inserting a block.
 	// This serializes a new subject's first provision with its deletion marker.
-	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended(length($1)::text || ':' || $1 || $2, 0))`, s.issuer, subject); err != nil {
+	if _, err = tx.Exec(ctx, subjectAdvisoryLockSQL, s.issuer, subject); err != nil {
 		return identity.User{}, err
 	}
 	var blocked bool
