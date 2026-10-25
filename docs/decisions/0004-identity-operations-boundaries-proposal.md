@@ -10,6 +10,10 @@ The development stack imports a Keycloak realm into `start-dev`; the browser use
 
 Offline JWT verification means Keycloak role removal, user disablement and session revocation alone do not immediately invalidate an already issued access token. `GET /auth/me` currently provisions an unknown subject, so erasing the application row while a token remains valid could recreate it. A public profile may also remain visible if the Keycloak account is disabled while the application row is left intact.
 
+## Maintainer direction (2026-10-25)
+
+The maintainer currently operates the early project alone and has not selected production hosting. This supports provider-neutral design and disposable topology tests; it does not appoint a production on-call team or waive independent approvals for future privileged operations. The two-person admin bootstrap, emergency access and independent audit below remain proposed gates. Do not activate privileged administrator routes with a permanent single-person exception.
+
 ## Proposed decision
 
 1. **Authority.** Keycloak owns credentials, authenticator factors, sessions and the OIDC subject within a particular issuer. The application owns member UUIDs, student/alumni claims, verification, profile publication and deletion state. Treat `(issuer, sub)` as the identity boundary in the production design: the current schema stores only `sub`, so an issuer change requires an explicit migration/reconciliation plan rather than an implicit relink. Email never links or restores accounts. Identity recovery must preserve the original issuer and subject where possible; subject replacement needs an exceptional, audited binding procedure, not automatic email matching.
@@ -55,4 +59,4 @@ Rollback after a deletion or subject rebind cannot restore erased credentials, c
 
 ## Review gate
 
-The maintainer must approve the production hosting/issuer ownership and issuer-change policy, administrator authority including first-grant bootstrap and emergency access, deletion eligibility and retention including name-bearing slugs and non-reprovision markers, recovery proof and rebind policy, and audit retention before implementation. This proposal is not evidence that production deployment, recovery, deletion or verification operations work. Issue #11 and the existing follow-up issues remain separate release gates.
+The maintainer may review provider-neutral topology and disposable tests while operating the early project alone. Before production-specific implementation or privileged operations, the maintainer must approve hosting/issuer ownership and issuer-change policy, administrator authority including independent first-grant bootstrap and emergency access, deletion eligibility and retention including name-bearing slugs and non-reprovision markers, recovery proof and rebind policy, and audit retention. This proposal is not evidence that production deployment, recovery, deletion or verification operations work. Issue #11 and the existing follow-up issues remain separate release gates.
