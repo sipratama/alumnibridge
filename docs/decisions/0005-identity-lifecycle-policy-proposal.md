@@ -1,8 +1,10 @@
 # ADR 0005 — M5 identity lifecycle policy decision (proposal)
 
-Date: 2026-10-25 (Asia/Jakarta).  
-Status: **Proposed; no production policy approved.**  
-Owner of decision: project maintainer.  
+Date: 2026-10-25 (Asia/Jakarta).
+
+Status: **Proposed; no production policy approved.**
+
+Owner of decision: project maintainer.
 Scope: account access, deletion, retained identity markers and slugs, operator authority, audit, and recovery. This document changes no runtime behavior. It complements [ADR 0004](0004-identity-operations-boundaries-proposal.md), the [lifecycle transaction design](../milestone-5-lifecycle-transition-design.md), and the [membership boundary review](../milestone-5-membership-lifecycle-boundary.md).
 
 ## Existing boundary and decision rule
